@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 import { Providers } from "@/components/Providers";
+import { SITE_URL, SITE_NAME, SITE_TITLE, SITE_DESCRIPTION } from "@/lib/site";
 
 // Tipografía oficial F1 Display (uso personal, no comercial)
 const f1Display = localFont({
@@ -29,30 +30,72 @@ const titillium = Titillium_Web({
   weight: ["300", "400", "600", "700", "900"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://deltazero.vercel.app";
-const TITLE = "DeltaZero — Análisis F1";
-const DESCRIPTION =
-  "Telemetría, comparativas y estrategia de Fórmula 1 con datos reales: velocidad, sectores, vueltas, campeonatos y más.";
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: TITLE,
-  description: DESCRIPTION,
-  applicationName: "DeltaZero",
-  keywords: ["F1", "Fórmula 1", "telemetría", "análisis", "estrategia", "OpenF1", "DeltaZero"],
-  icons: { icon: "/icon.png", apple: "/icon.png" },
+  title: {
+    default: SITE_TITLE,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  authors: [{ name: "Álvaro Langa" }],
+  creator: "Álvaro Langa",
+  publisher: "Álvaro Langa",
+  category: "sports",
+  keywords: [
+    "F1",
+    "Fórmula 1",
+    "Formula 1",
+    "telemetría",
+    "análisis F1",
+    "estrategia",
+    "vueltas",
+    "neumáticos",
+    "mundial de pilotos",
+    "mundial de constructores",
+    "OpenF1",
+    "DeltaZero",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     type: "website",
-    siteName: "DeltaZero",
-    title: TITLE,
-    description: DESCRIPTION,
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     url: SITE_URL,
     locale: "es_ES",
   },
   twitter: {
     card: "summary_large_image",
-    title: TITLE,
-    description: DESCRIPTION,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
   },
 };
 

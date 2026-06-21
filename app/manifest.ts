@@ -1,12 +1,19 @@
 import type { MetadataRoute } from "next";
 
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from "@/lib/site";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "DeltaZero — Análisis F1",
-    short_name: "DeltaZero",
-    description: "Telemetría, comparativas y estrategia de Fórmula 1 con datos reales",
+    id: "/",
+    name: SITE_TITLE,
+    short_name: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    lang: "es",
+    categories: ["sports", "utilities"],
     start_url: "/",
+    scope: "/",
     display: "standalone",
+    orientation: "any",
     background_color: "#15151e",
     theme_color: "#e10600",
     icons: [
