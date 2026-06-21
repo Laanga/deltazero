@@ -1,6 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
+# ---- dependencies ----
 /node_modules
 /.pnp
 .pnp.*
@@ -10,32 +10,56 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# ---- builds / cache ----
 /.next/
 /out/
-
-# production
 /build
+/dist
+/.turbo
+*.tsbuildinfo
+next-env.d.ts
 
-# misc
-.DS_Store
-*.pem
+# ---- testing ----
+/coverage
 
-# debug
+# ---- env files (nunca subir secretos; opt-in si hiciera falta) ----
+.env
+.env.*
+!.env.example
+
+# ---- logs ----
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
+# ---- deploy ----
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ---- editores / IDE ----
+.idea/
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ---- herramientas de agentes (config local, no compartir) ----
+.claude/settings.local.json
+
+# ---- sistema operativo ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Desktop.ini
+
+# ---- misc ----
+*.pem
+
+# ---- material interno (no publicar) ----
+PROMO.md
+MEJORAS.md

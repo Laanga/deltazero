@@ -1,26 +1,120 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ── Brand F1: Carbon Black #15151E · F1 Red #E10600 · White ── */
+@theme {
+  --color-carbon: #15151e;
+  --color-panel: #1d1d26;
+  --color-panel-light: #26262f;
+  --color-edge: #4a4a5a;
+  --color-f1red: #e10600;
+  --font-display: var(--font-f1), var(--font-titillium), system-ui, sans-serif;
+  --font-wide: var(--font-f1-wide), var(--font-f1), var(--font-titillium), sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Variante Wide de F1 Display: para títulos de sección y cifras destacadas */
+.font-wide {
+  font-family: var(--font-wide);
+  font-style: normal;
+  letter-spacing: 0.02em;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-carbon);
+  color: #ffffff;
+  font-family: var(--font-display);
+}
+
+::selection {
+  background: rgba(225, 6, 0, 0.5);
+}
+
+/* Foco de teclado visible y consistente en elementos interactivos */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-f1red);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-carbon);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-edge);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-f1red);
+}
+
+/* Tarjeta F1: esquina superior derecha cortada a 45° (motivo del logo) */
+.panel {
+  position: relative;
+  background: var(--color-panel);
+  border: 1px solid var(--color-edge);
+  border-radius: 5px;
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+}
+
+/* Paneles con contenido desplegable (dropdowns) no pueden recortar overflow */
+.panel.no-cut {
+  clip-path: none;
+}
+
+.panel-glow {
+  transition: border-color 0.25s ease, background-color 0.25s ease;
+}
+.panel-glow:hover {
+  border-color: var(--color-f1red);
+}
+
+/* Línea de velocidad animada */
+@keyframes speedline {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(500%); }
+}
+.speedline {
+  animation: speedline 2.8s cubic-bezier(0.6, 0, 0.3, 1) infinite;
+}
+
+/* Rejilla de telemetría tenue para fondos a pantalla completa */
+.telemetry-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 65% 60% at 50% 42%, #000 25%, transparent 78%);
+          mask-image: radial-gradient(ellipse 65% 60% at 50% 42%, #000 25%, transparent 78%);
+}
+
+/* Franjas diagonales de fibra de carbono, muy sutiles */
+.carbon-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.018) 0px,
+    rgba(255, 255, 255, 0.018) 1px,
+    transparent 1px,
+    transparent 9px
+  );
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-panel) 25%, var(--color-panel-light) 50%, var(--color-panel) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 5px;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
 }
