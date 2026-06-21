@@ -21,7 +21,7 @@ Compara hasta 5 pilotos vuelta a vuelta sobre un mapa interactivo del circuito, 
 [![Zustand](https://img.shields.io/badge/Zustand-5-443e38?style=flat-square)](https://zustand-demo.pmnd.rs)
 [![Sin servidor](https://img.shields.io/badge/Backend-0%20servidores-e10600?style=flat-square)](#arquitectura)
 
-**[Ver demo en vivo](https://deltazero.vercel.app)**
+**[Ver demo en vivo](https://delta-zero.vercel.app)**
 
 </div>
 
