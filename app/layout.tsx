@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Titillium_Web } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 import { Providers } from "@/components/Providers";
@@ -75,6 +76,7 @@ export default function RootLayout({
       {/* suppressHydrationWarning: las extensiones del navegador inyectan atributos en <body> */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
