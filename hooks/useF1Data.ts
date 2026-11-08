@@ -159,3 +159,14 @@ export function useConstructorStandings() {
     ...STANDINGS,
   });
 }
+
+/** Paleta oficial de equipos de la temporada (OpenF1), para los mundiales. */
+export function useTeamColors() {
+  const year = useSessionStore((s) => s.year);
+  return useQuery({
+    queryKey: ["teamColors", year],
+    queryFn: () => api.teamColors(year),
+    ...STANDINGS,
+    staleTime: 60 * 60_000,
+  });
+}

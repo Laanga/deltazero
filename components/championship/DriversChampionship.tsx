@@ -9,10 +9,10 @@ import {
   RankBadge,
   StandingsSkeleton,
   TeamLogo,
+  useTeamColor,
 } from "@/components/championship/shared";
 import { NationalityBadge } from "@/components/NationalityBadge";
 import { useDriverStandings } from "@/hooks/useF1Data";
-import { teamColor } from "@/lib/champAssets";
 import type { DriverStanding } from "@/lib/types";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -25,7 +25,8 @@ function PodiumCard({
   rank: 1 | 2 | 3;
   index: number;
 }) {
-  const color = teamColor(driver.team_id);
+  const teamColorOf = useTeamColor();
+  const color = teamColorOf(driver.team_id);
   return (
     <PodiumShell rank={rank} color={color} index={index}>
       <div className="relative flex justify-center pt-3">
@@ -77,7 +78,8 @@ function DriverRow({
   maxPoints: number;
   index: number;
 }) {
-  const color = teamColor(driver.team_id);
+  const teamColorOf = useTeamColor();
+  const color = teamColorOf(driver.team_id);
   const pct = maxPoints > 0 ? (driver.points / maxPoints) * 100 : 0;
   return (
     <div

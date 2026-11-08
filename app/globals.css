@@ -39,8 +39,8 @@
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --animate-rise: rise 0.55s var(--ease-out-soft) both;
-  --animate-fade: fade 0.4s ease-out both;
+  --animate-rise: rise 0.55s var(--ease-out-soft) backwards;
+  --animate-fade: fade 0.4s ease-out backwards;
 }
 
 :root {
@@ -171,6 +171,24 @@ body {
   backdrop-filter: blur(24px) saturate(170%);
 }
 
+/* Menús y desplegables: casi opacos para que el texto se lea siempre,
+   con blur como acabado (no dependen de él para ser legibles) */
+.menu-surface {
+  background: rgb(26 26 35 / 0.97);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 24px 60px -12px rgb(0 0 0 / 0.8),
+    0 6px 18px rgb(0 0 0 / 0.45);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+@supports (corner-shape: squircle) {
+  .menu-surface {
+    corner-shape: squircle;
+  }
+}
+
 /* Relleno de control (inputs, pills inactivas, pistas de slider) */
 .fill-control {
   background: rgb(255 255 255 / 0.055);
@@ -235,8 +253,11 @@ body {
 }
 
 /* Entrada escalonada: style={{ "--i": index }} */
+/* fill-mode "backwards" (no "both"): al terminar no deja un transform/opacity
+   aplicado, que crearía un contexto de apilamiento por elemento y haría que
+   menús y tooltips quedaran por debajo de la tarjeta siguiente. */
 .stagger {
-  animation: rise 0.5s var(--ease-out-soft) both;
+  animation: rise 0.5s var(--ease-out-soft) backwards;
   animation-delay: calc(min(var(--i, 0), 24) * 28ms);
 }
 
@@ -250,7 +271,7 @@ body {
 }
 .grow-x {
   transform-origin: left center;
-  animation: grow-x 0.8s var(--ease-out-soft) both;
+  animation: grow-x 0.8s var(--ease-out-soft) backwards;
   animation-delay: calc(min(var(--i, 0), 40) * 12ms);
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, Disc3, Flag, Play, Timer } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { ChartPanel, ChartSkeleton, EmptyState } from "@/components/ChartPanel";
@@ -10,6 +11,8 @@ import { Badge, Chip } from "@/components/ui/Chip";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Sheet } from "@/components/ui/Sheet";
+import { CircuitOutline } from "@/components/telemetry/TrackMap";
+import { api } from "@/lib/api";
 
 const GPS = [
   "Bahrain Grand Prix",
@@ -24,6 +27,11 @@ export function LabShowcase() {
   const [gp, setGp] = useState(GPS[0]);
   const [chips, setChips] = useState([true, false, false]);
   const [sheet, setSheet] = useState(false);
+  const { data: circuit } = useQuery({
+    queryKey: ["circuit", 2025, "Japanese Grand Prix"],
+    queryFn: () => api.circuit(2025, "Japanese Grand Prix"),
+    staleTime: Infinity,
+  });
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 px-4 py-10">
@@ -124,6 +132,13 @@ export function LabShowcase() {
         <ChartSkeleton height={160} />
         <EmptyState message="Estado vacío" hint="Texto aclaratorio de segunda línea." />
       </div>
+
+      <ChartPanel
+        title="Trazado oficial de respaldo"
+        subtitle="sesiones sin datos de posición · Suzuka"
+      >
+        {circuit?.outline ? <CircuitOutline circuit={circuit} /> : <ChartSkeleton height={300} />}
+      </ChartPanel>
 
       <Sheet
         open={sheet}

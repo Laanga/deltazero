@@ -224,5 +224,47 @@ export function integrateDistance(times: number[], speedKmh: number[]): number[]
   return dist;
 }
 
+/**
+ * Ancla las muestras de telemetría a la vuelta oficial.
+ *
+ * OpenF1 muestrea a ~3,7 Hz: la primera muestra llega hasta ~0,27 s después de
+ * cruzar la meta y la última otro tanto antes. Se añaden dos puntos sintéticos
+ * en t=0 y t=lapDuration (velocidad constante en esos fragmentos) para que la
+ * distancia empiece en 0 justo en la meta y el reloj termine exactamente en el
+ * tiempo oficial. Así el delta entre dos vueltas arranca en 0 y acaba en la
+ * diferencia oficial de tiempos.
+ */
+export function anchorLap<K extends string>(
+  times: number[],
+  lapDuration: number,
+  channels: Record<K, number[]>,
+): { t: number[]; d: number[]; channels: Record<K, number[]> } {
+  const n = times.length;
+  const pad = (arr: number[]) => [arr[0], ...arr, arr[n - 1]];
+  // Muestras fuera de [0, lapDuration] por redondeos de fecha: se recortan
+  const t = [0, ...times.map((x) => Math.min(Math.max(x, 0), lapDuration)), lapDuration];
+  const out = {} as Record<K, number[]>;
+  for (const k of Object.keys(channels) as K[]) out[k] = pad(channels[k]);
+  const speedKey = ("speed" in channels ? "speed" : Object.keys(channels)[0]) as K;
+  const d = integrateDistance(t, out[speedKey]);
+  return { t, d, channels: out };
+}
+
+/** Valor de un canal a una distancia cualquiera (interpolación lineal; rejilla ascendente). */
+export function valueAtDistance(
+  dist: ArrayLike<number>,
+  values: ArrayLike<number>,
+  d: number,
+): number {
+  const n = dist.length;
+  if (n === 0) return NaN;
+  if (d <= dist[0]) return values[0];
+  if (d >= dist[n - 1]) return values[n - 1];
+  const j = lowerBound(dist, d);
+  const span = dist[j] - dist[j - 1];
+  const f = span === 0 ? 0 : (d - dist[j - 1]) / span;
+  return values[j - 1] + (values[j] - values[j - 1]) * f;
+}
+
 export const round1 = (v: number) => Math.round(v * 10) / 10;
 export const round3 = (v: number) => Math.round(v * 1000) / 1000;

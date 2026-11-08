@@ -25,9 +25,9 @@ import type {
   TrackEvent,
 } from "./types";
 import {
+  anchorLap,
   formatRaceDuration,
   groupBy,
-  integrateDistance,
   interp,
   parseRaceControl,
   raceProgress,
@@ -567,66 +567,44 @@ export const openf1Api = {
     if (car.length < 2) throw new Error(`Sin telemetría para ${acronym} (OpenF1)`);
     car.sort((a, b) => a.date.localeCompare(b.date));
 
-    const times = car.map((c) => (Date.parse(c.date) - t0) / 1000);
-    const dist = integrateDistance(
-      times,
-      car.map((c) => c.speed),
+    // Reloj anclado a la vuelta oficial: t=0 en la línea de meta y t=lap_duration
+    // al cruzarla de nuevo (ver anchorLap). Sin esto el delta arrastra hasta
+    // ±0,27 s del muestreo de OpenF1.
+    const anchored = anchorLap(
+      car.map((c) => (Date.parse(c.date) - t0) / 1000),
+      chosen.lap_duration!,
+      {
+        speed: car.map((c) => c.speed),
+        rpm: car.map((c) => c.rpm),
+        throttle: car.map((c) => Math.min(c.throttle, 100)),
+        // OpenF1 da freno 0-100; las gráficas esperan 0/1 como FastF1
+        brake: car.map((c) => (c.brake > 50 ? 1 : 0)),
+        gear: car.map((c) => c.n_gear),
+        drs: car.map((c) => (c.drs != null && [10, 12, 14].includes(c.drs) ? 1 : 0)),
+      },
     );
 
-    const maxDist = dist[dist.length - 1];
+    // Rejilla cada STEP_METERS + el punto final exacto (el tiempo final = lap_duration)
+    const maxDist = anchored.d[anchored.d.length - 1];
     const grid: number[] = [];
-    for (let g = 0; g < maxDist; g += STEP_METERS) grid.push(g);
+    for (let g = 0; g < maxDist - 0.5; g += STEP_METERS) grid.push(g);
+    grid.push(maxDist);
 
-    const speed = interp(
-      grid,
-      dist,
-      car.map((c) => c.speed),
-    );
-    const rpm = interp(
-      grid,
-      dist,
-      car.map((c) => c.rpm),
-    );
-    const throttle = interp(
-      grid,
-      dist,
-      car.map((c) => Math.min(c.throttle, 100)),
-    );
-    // OpenF1 da freno 0-100; el chart espera 0/1 como FastF1
-    const brake = interp(
-      grid,
-      dist,
-      car.map((c) => (c.brake > 50 ? 1 : 0)),
-    );
-    const gear = interp(
-      grid,
-      dist,
-      car.map((c) => c.n_gear),
-    );
-    const drs = interp(
-      grid,
-      dist,
-      car.map((c) => (c.drs != null && [10, 12, 14].includes(c.drs) ? 1 : 0)),
-    );
-    const timeChan = interp(grid, dist, times);
+    const ch = (name: keyof typeof anchored.channels) =>
+      interp(grid, anchored.d, anchored.channels[name]);
+    const timeChan = interp(grid, anchored.d, anchored.t);
 
     // Posición en pista (puede no existir en sesiones muy recientes)
     let track: { x: number[]; y: number[] } | null = null;
     if (loc.length >= 2) {
       loc.sort((a, b) => a.date.localeCompare(b.date));
       const locTimes = loc.map((p) => (Date.parse(p.date) - t0) / 1000);
-      const locDist = interp(locTimes, times, dist);
+      const locDist = interp(locTimes, anchored.t, anchored.d);
+      const xs = loc.map((p) => p.x);
+      const ys = loc.map((p) => p.y);
       track = {
-        x: interp(
-          grid,
-          locDist,
-          loc.map((p) => p.x),
-        ).map(round1),
-        y: interp(
-          grid,
-          locDist,
-          loc.map((p) => p.y),
-        ).map(round1),
+        x: interp(grid, locDist, xs).map(round1),
+        y: interp(grid, locDist, ys).map(round1),
       };
     }
 
@@ -644,12 +622,12 @@ export const openf1Api = {
       },
       channels: {
         distance: grid.map(round1),
-        speed: speed.map(round1),
-        rpm: rpm.map(Math.round),
-        throttle: throttle.map(round1),
-        brake: brake.map(Math.round),
-        gear: gear.map(Math.round),
-        drs: drs.map(Math.round),
+        speed: ch("speed").map(round1),
+        rpm: ch("rpm").map(Math.round),
+        throttle: ch("throttle").map(round1),
+        brake: ch("brake").map(Math.round),
+        gear: ch("gear").map(Math.round),
+        drs: ch("drs").map(Math.round),
         time: timeChan.map(round3),
       },
       track,
@@ -861,6 +839,29 @@ export const openf1Api = {
       laps: b.laps,
     }));
     return { kind: "practice", rows: out };
+  },
+
+  /**
+   * Colores oficiales de cada equipo en la temporada (nombre de equipo de
+   * OpenF1 → "#rrggbb"), de la última sesión disputada del año. Así cada
+   * temporada usa su paleta real (2026 estrena Audi y Cadillac y cambia otras).
+   */
+  async teamColors(year: number): Promise<Record<string, string>> {
+    const { meetings, sessionsByMeeting } = await loadYear(year);
+    const now = Date.now();
+    for (let i = meetings.length - 1; i >= 0; i--) {
+      const started = (sessionsByMeeting.get(meetings[i].meeting_key) ?? [])
+        .filter((s) => Date.parse(s.date_start) < now)
+        .sort((a, b) => b.date_start.localeCompare(a.date_start));
+      for (const ses of started) {
+        const drivers = await getDrivers(ses.session_key);
+        const out: Record<string, string> = {};
+        for (const d of drivers)
+          if (d.team_name && d.team_colour) out[d.team_name] = `#${d.team_colour}`;
+        if (Object.keys(out).length) return out;
+      }
+    }
+    return {};
   },
 
   /* Standings: Jolpica (sucesor de Ergast) directamente desde el navegador */

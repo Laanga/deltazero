@@ -1,13 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
   LineChart,
   ReferenceArea,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,21 +17,10 @@ import { ChartPanel, ChartSkeleton, EmptyState } from "@/components/ChartPanel";
 import { DriverTag } from "@/components/DriverTag";
 import { useGaps, usePositions, useRaceEvents, useResults, useStrategy } from "@/hooks/useF1Data";
 import { api } from "@/lib/api";
-import { AXIS, GRID, TOOLTIP as TOOLTIP_BASE } from "@/lib/chartDefaults";
+import { EVENT_COLORS, PositionsChart, type LineStyle } from "@/components/race/PositionsChart";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { AXIS, GRID } from "@/lib/chartDefaults";
 import { useSessionStore } from "@/store/sessionStore";
-
-// La parrilla completa cabe mucha gente: limita la altura del tooltip
-const TOOLTIP = {
-  ...TOOLTIP_BASE,
-  contentStyle: { ...TOOLTIP_BASE.contentStyle, maxHeight: 320, overflow: "hidden" },
-} as const;
-
-const EVENT_COLORS: Record<string, string> = {
-  SC: "#ffd12e",
-  VSC: "#ff9d2e",
-  RED: "#e10600",
-};
 
 const FIRST_DATA_YEAR = 2023; // OpenF1 no tiene telemetría/gaps antes de esto
 
@@ -70,13 +58,72 @@ export function RaceView() {
     return [...set];
   }, [positions]);
 
-  const highlight = useMemo(
-    () => (selectedDrivers.length > 0 ? new Set(selectedDrivers) : null),
+  // Pilotos destacados: los seleccionados en la app, salvo que se cambien aquí con los chips
+  const [focusOverride, setFocusOverride] = useState<string[] | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const focusList = focusOverride ?? selectedDrivers;
+  const emphasized = useMemo(() => new Set(focusList), [focusList]);
+  const highlight = emphasized.size > 0 ? emphasized : null;
+  const toggleFocus = useCallback(
+    (d: string) =>
+      setFocusOverride((cur) => {
+        const base = cur ?? selectedDrivers;
+        return base.includes(d) ? base.filter((x) => x !== d) : [...base, d];
+      }),
     [selectedDrivers],
   );
 
+  // Orden de los pilotos: resultado final (o el de la última vuelta)
+  const orderedDrivers = useMemo(() => {
+    const order = new Map((results ?? []).map((r, i) => [r.driver, i]));
+    const lastPos = positions?.[positions.length - 1]?.positions ?? {};
+    return [...allDrivers].sort(
+      (a, b) =>
+        (order.get(a) ?? 50 + (lastPos[a] ?? 99)) - (order.get(b) ?? 50 + (lastPos[b] ?? 99)),
+    );
+  }, [allDrivers, results, positions]);
+
+  // Compañeros de equipo comparten color: el segundo de cada equipo va discontinuo
+  const dashed = useMemo(() => {
+    const seen = new Set<string>();
+    const out = new Set<string>();
+    for (const d of orderedDrivers) {
+      const c = colorOf(d).toLowerCase();
+      if (seen.has(c)) out.add(d);
+      else seen.add(c);
+    }
+    return out;
+  }, [orderedDrivers, colorOf]);
+
+  const styleOf = useCallback(
+    (d: string): LineStyle => {
+      const base = { stroke: colorOf(d), strokeDasharray: dashed.has(d) ? "5 3" : undefined };
+      if (hovered)
+        return {
+          ...base,
+          strokeWidth: d === hovered ? 3.2 : 1,
+          strokeOpacity: d === hovered ? 1 : 0.12,
+        };
+      if (emphasized.size) {
+        return {
+          ...base,
+          strokeWidth: emphasized.has(d) ? 2.6 : 1,
+          strokeOpacity: emphasized.has(d) ? 1 : 0.14,
+        };
+      }
+      return { ...base, strokeWidth: 1.6, strokeOpacity: 0.85 };
+    },
+    [colorOf, dashed, hovered, emphasized],
+  );
+
+  // Cada fila lleva la clasificación de la vuelta anterior (▲▼ en el tooltip)
   const positionData = useMemo(
-    () => positions?.map((p) => ({ lap: p.lap, ...p.positions })) ?? [],
+    () =>
+      positions?.map((p, i) => ({
+        lap: p.lap,
+        ...p.positions,
+        __prev: (i > 0 ? positions[i - 1].positions : undefined) as unknown as number,
+      })) ?? [],
     [positions],
   );
   const gapData = useMemo(() => gaps?.map((g) => ({ lap: g.lap, ...g.gaps })) ?? [], [gaps]);
@@ -101,15 +148,13 @@ export function RaceView() {
     return { from: q(0.1), to: q(0.9) };
   }, [pitLapsByDriver]);
 
-  // Marcadores de parada de los pilotos destacados
+  // Paradas de los pilotos destacados (o del que está bajo el ratón)
   const highlightedPits = useMemo(() => {
-    if (!highlight) return [];
+    const who = hovered ? [hovered] : focusList;
     const out: { driver: string; lap: number }[] = [];
-    for (const d of selectedDrivers) {
-      for (const lap of pitLapsByDriver[d] ?? []) out.push({ driver: d, lap });
-    }
+    for (const d of who) for (const lap of pitLapsByDriver[d] ?? []) out.push({ driver: d, lap });
     return out;
-  }, [highlight, selectedDrivers, pitLapsByDriver]);
+  }, [hovered, focusList, pitLapsByDriver]);
 
   // Gap combinado con la temporada de comparación (solo pilotos seleccionados)
   const cmpByLap = useMemo(() => {
@@ -129,11 +174,10 @@ export function RaceView() {
       .map((lap) => {
         const row: Record<string, number> = { ...(base.get(lap) ?? { lap }) };
         const cmp = cmpByLap.get(lap);
-        if (cmp)
-          for (const d of selectedDrivers) if (cmp[d] != null) row[`${d} ${compareYear}`] = cmp[d];
+        if (cmp) for (const d of focusList) if (cmp[d] != null) row[`${d} ${compareYear}`] = cmp[d];
         return row;
       });
-  }, [gapData, cmpByLap, compareYear, selectedDrivers]);
+  }, [gapData, cmpByLap, compareYear, focusList]);
 
   // Rangos consecutivos de SC/VSC/RED para pintar bandas
   const eventBands = useMemo(() => {
@@ -172,14 +216,6 @@ export function RaceView() {
     );
   }
 
-  const lineProps = (driver: string) => ({
-    stroke: colorOf(driver),
-    strokeWidth: highlight ? (highlight.has(driver) ? 2.6 : 1) : 1.8,
-    strokeOpacity: highlight ? (highlight.has(driver) ? 1 : 0.18) : 0.9,
-    dot: false as const,
-    animationDuration: 1100,
-  });
-
   const matrixCsv =
     (rows: Record<string, number | undefined>[]) => (): (string | number | null)[][] => {
       const header = ["vuelta", ...allDrivers];
@@ -191,62 +227,32 @@ export function RaceView() {
     <div className="space-y-5">
       <ChartPanel
         title="Posiciones por vuelta"
-        subtitle="bandas: amarillo SC · naranja VSC · rojo bandera roja · gris ventana de paradas"
+        subtitle="toca un piloto para destacarlo · ● = parada"
         exportName="posiciones"
         csvRows={matrixCsv(positionData)}
       >
-        <ResponsiveContainer width="100%" height={440}>
-          <LineChart data={positionData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-            <CartesianGrid {...GRID} />
-            <XAxis dataKey="lap" {...AXIS} />
-            <YAxis
-              {...AXIS}
-              reversed
-              domain={[1, allDrivers.length]}
-              tickCount={allDrivers.length}
-              allowDecimals={false}
-            />
-            <Tooltip
-              {...TOOLTIP}
-              labelFormatter={(v) => `Vuelta ${v}`}
-              itemSorter={(item) => item.value as number}
-            />
-            {pitWindow && (
-              <ReferenceArea
-                x1={pitWindow.from}
-                x2={pitWindow.to}
-                fill="#a1a1aa"
-                fillOpacity={0.06}
-              />
-            )}
-            {eventBands.map((b, i) => (
-              <ReferenceArea
-                key={i}
-                x1={b.from}
-                x2={b.to}
-                fill={EVENT_COLORS[b.type]}
-                fillOpacity={0.08}
-              />
-            ))}
-            {highlightedPits.map((p, i) => (
-              <ReferenceLine
-                key={`pit-${i}`}
-                x={p.lap}
-                stroke={colorOf(p.driver)}
-                strokeDasharray="3 3"
-                strokeOpacity={0.6}
-              />
-            ))}
-            {allDrivers.map((d) => (
-              <Line key={d} type="stepAfter" dataKey={d} {...lineProps(d)} connectNulls />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-        {highlightedPits.length > 0 && (
-          <p className="mt-2 text-[11px] text-ink-3">
-            Líneas verticales punteadas = paradas de los pilotos seleccionados.
-          </p>
-        )}
+        <FocusBar
+          drivers={orderedDrivers}
+          colorOf={colorOf}
+          emphasized={emphasized}
+          onToggle={toggleFocus}
+          onHover={setHovered}
+          onClear={() => setFocusOverride([])}
+        />
+        <PositionsChart
+          data={positionData}
+          drivers={orderedDrivers}
+          styleOf={styleOf}
+          colorOf={colorOf}
+          emphasized={emphasized}
+          bands={eventBands}
+          pitWindow={pitWindow}
+          pits={highlightedPits}
+          onToggle={toggleFocus}
+          onHover={setHovered}
+          height={460}
+        />
+        <Legend bands={eventBands} pitWindow={!!pitWindow} />
       </ChartPanel>
 
       {/* Comparativa histórica */}
@@ -260,8 +266,8 @@ export function RaceView() {
           display={(o) => ({ key: o, text: o === "none" ? "Sin comparar" : `${gp} ${o}` })}
           onSelect={(o) => setCompareYear(o === "none" ? null : Number(o))}
         />
-        {compareYear != null && selectedDrivers.length === 0 && (
-          <span className="text-xs text-ink-3">Selecciona pilotos para superponer su gap</span>
+        {compareYear != null && focusList.length === 0 && (
+          <span className="text-xs text-ink-3">Destaca pilotos para superponer su gap</span>
         )}
         {compareYear != null && !compareGaps.isLoading && cmpByLap.size === 0 && (
           <span className="text-xs text-amber-500/80">
@@ -281,30 +287,41 @@ export function RaceView() {
         csvRows={matrixCsv(gapData)}
       >
         <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={mergedGapData} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
+          <LineChart data={mergedGapData} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
             <CartesianGrid {...GRID} />
             <XAxis dataKey="lap" {...AXIS} />
             <YAxis {...AXIS} tickFormatter={(v) => `${v}s`} />
             <Tooltip
-              {...TOOLTIP}
-              labelFormatter={(v) => `Vuelta ${v}`}
-              formatter={(v) => `${(v as number).toFixed(1)}s`}
-              itemSorter={(item) => item.value as number}
+              content={<GapTooltip colorOf={colorOf} emphasized={emphasized} />}
+              cursor={{ stroke: "rgb(255 255 255 / 0.25)" }}
+              isAnimationActive={false}
+              wrapperStyle={{ zIndex: 50 }}
             />
             {eventBands.map((b, i) => (
               <ReferenceArea
                 key={i}
                 x1={b.from}
-                x2={b.to}
+                x2={Math.max(b.to, b.from + 0.6)}
                 fill={EVENT_COLORS[b.type]}
-                fillOpacity={0.08}
+                fillOpacity={0.1}
               />
             ))}
-            {allDrivers.map((d) => (
-              <Line key={d} type="monotone" dataKey={d} {...lineProps(d)} connectNulls />
+            {orderedDrivers.map((d) => (
+              <Line
+                key={d}
+                type="monotone"
+                dataKey={d}
+                {...styleOf(d)}
+                dot={false}
+                activeDot={
+                  emphasized.size === 0 || emphasized.has(d) ? { r: 3, strokeWidth: 0 } : false
+                }
+                isAnimationActive={false}
+                connectNulls
+              />
             ))}
             {compareYear != null &&
-              selectedDrivers.map((d) => (
+              focusList.map((d) => (
                 <Line
                   key={`cmp-${d}`}
                   type="monotone"
@@ -382,6 +399,135 @@ export function RaceView() {
           </div>
         </ChartPanel>
       )}
+    </div>
+  );
+}
+
+/** Chips para destacar pilotos en las gráficas de carrera (orden de llegada). */
+function FocusBar({
+  drivers,
+  colorOf,
+  emphasized,
+  onToggle,
+  onHover,
+  onClear,
+}: {
+  drivers: string[];
+  colorOf: (d: string) => string;
+  emphasized: Set<string>;
+  onToggle: (d: string) => void;
+  onHover: (d: string | null) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      className="mb-4 flex flex-wrap items-center gap-1.5"
+      role="group"
+      aria-label="Destacar pilotos"
+    >
+      {drivers.map((d, i) => {
+        const on = emphasized.has(d);
+        const c = colorOf(d);
+        return (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onToggle(d)}
+            onMouseEnter={() => onHover(d)}
+            onMouseLeave={() => onHover(null)}
+            onFocus={() => onHover(d)}
+            onBlur={() => onHover(null)}
+            className={`pressable flex h-7 items-center gap-1.5 rounded-full pl-2 pr-2.5 text-[11px] font-bold tabular-nums ${on ? "text-white" : "fill-control text-ink-2 hover:text-white"}`}
+            style={on ? { background: `${c}33`, boxShadow: `inset 0 0 0 1.5px ${c}` } : undefined}
+          >
+            <span className="text-[9px] font-semibold text-ink-3">{i + 1}</span>
+            <span className="h-2 w-2 rounded-full" style={{ background: c }} />
+            {d}
+          </button>
+        );
+      })}
+      {emphasized.size > 0 && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="pressable h-7 rounded-full px-2.5 text-[11px] font-semibold text-ink-3 hover:bg-white/[0.07] hover:text-ink"
+        >
+          Ver todos
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Legend({ bands, pitWindow }: { bands: { type: string }[]; pitWindow: boolean }) {
+  const types = [...new Set(bands.map((b) => b.type))];
+  if (!types.length && !pitWindow) return null;
+  const names: Record<string, string> = { SC: "Safety car", VSC: "VSC", RED: "Bandera roja" };
+  return (
+    <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-ink-3">
+      {types.map((t) => (
+        <span key={t} className="flex items-center gap-1.5">
+          <span
+            className="h-2.5 w-4 rounded-full"
+            style={{ background: EVENT_COLORS[t], opacity: 0.45 }}
+          />
+          {names[t] ?? t}
+        </span>
+      ))}
+      {pitWindow && (
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-4 rounded-full bg-zinc-400/25" />
+          Ventana de paradas
+        </span>
+      )}
+    </div>
+  );
+}
+
+function GapTooltip({
+  active,
+  label,
+  payload,
+  colorOf,
+  emphasized,
+}: {
+  active?: boolean;
+  label?: number | string;
+  payload?: { dataKey?: string | number; value?: number }[];
+  colorOf: (d: string) => string;
+  emphasized: Set<string>;
+}) {
+  if (!active || !payload?.length) return null;
+  const rows = payload
+    .filter((p) => typeof p.value === "number" && !String(p.dataKey).includes(" "))
+    .map((p) => ({ driver: String(p.dataKey), gap: p.value as number }))
+    .sort((a, b) => a.gap - b.gap);
+  const half = Math.ceil(rows.length / 2);
+  return (
+    <div className="menu-surface rounded-[16px] px-3 py-2.5 text-[11px]">
+      <p className="mb-1.5 font-bold text-ink-2">Vuelta {label}</p>
+      <div className="grid grid-cols-2 gap-x-4">
+        {[rows.slice(0, half), rows.slice(half)].map((col, c) => (
+          <div key={c} className="space-y-0.5">
+            {col.map((r) => (
+              <div
+                key={r.driver}
+                className={`flex items-center gap-1.5 ${emphasized.size === 0 || emphasized.has(r.driver) ? "" : "opacity-40"}`}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: colorOf(r.driver) }}
+                />
+                <span className="w-8 font-bold">{r.driver}</span>
+                <span className="w-12 text-right font-mono tabular-nums text-ink-2">
+                  {r.gap === 0 ? "líder" : `+${r.gap.toFixed(1)}s`}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

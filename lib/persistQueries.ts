@@ -15,6 +15,7 @@ const PERSIST = new Set([
   "latestRace",
   "drivers",
   "circuit",
+  "teamColors",
 ]);
 
 interface Entry {

@@ -17,7 +17,13 @@ import { useShallow } from "zustand/react/shallow";
 import { ChartPanel, ChartSkeleton, EmptyState } from "@/components/ChartPanel";
 import { DriverAvatar } from "@/components/DriverAvatar";
 import { LapPicker } from "@/components/telemetry/LapPicker";
-import { TrackMap, type DriverMeta } from "@/components/telemetry/TrackMap";
+import { LapComparator } from "@/components/telemetry/LapComparator";
+import {
+  CircuitOutline,
+  TrackMap,
+  type DriverMeta,
+  type DuelData,
+} from "@/components/telemetry/TrackMap";
 import { useMergedTelemetry } from "@/components/telemetry/useMergedTelemetry";
 import { seekRequest, usePlayback } from "@/components/telemetry/usePlayback";
 import { Badge } from "@/components/ui/Chip";
@@ -25,10 +31,12 @@ import { IconButton } from "@/components/ui/Button";
 import { useCircuit, useDrivers, useTelemetry } from "@/hooks/useF1Data";
 import { DRIVER_PHOTOS } from "@/lib/champAssets";
 import { AXIS, GRID, TOOLTIP } from "@/lib/chartDefaults";
+import { alignedIndex, alignedValue, deltaSeries, rivalColor } from "@/lib/duel";
 import { lowerBound } from "@/lib/f1math";
 import type { TelemetryData } from "@/lib/types";
 import { formatDelta, formatLapTime, lineDashFor } from "@/lib/utils";
 import { useCursorStore } from "@/store/cursorStore";
+import { useMapStore } from "@/store/mapStore";
 import { useSessionStore } from "@/store/sessionStore";
 
 // Geometría del área de trazado de las gráficas (debe cuadrar con margin + YAxis width)
@@ -104,6 +112,33 @@ export function TelemetryView() {
       return { label: `${c.number}${c.letter}`, distance: ref.channels.distance[best] };
     });
   }, [ref, circuit]);
+
+  // Duelo del comparador: el guardado si sus dos pilotos siguen cargados; si no, los dos primeros
+  const storedDuel = useMapStore((s) => s.duel);
+  const duel = useMemo((): DuelData | null => {
+    if (telemetry.length < 2) return null;
+    const find = (d: string | undefined) => telemetry.find((t) => t.driver === d);
+    let a = find(storedDuel?.ref);
+    let b = find(storedDuel?.rival);
+    if (!a || !b || a === b) {
+      a = telemetry[0];
+      b = telemetry[1];
+    }
+    const colorA = driverMeta.find((m) => m.abbr === a.driver)?.team_color ?? "#888";
+    const colorB = driverMeta.find((m) => m.abbr === b.driver)?.team_color ?? "#888";
+    return {
+      ref: a,
+      rival: b,
+      refColor: colorA,
+      rivalColor: rivalColor(colorA, colorB),
+      delta: deltaSeries(a, b),
+    };
+  }, [telemetry, storedDuel, driverMeta]);
+
+  const headshots = useMemo(
+    () => Object.fromEntries(driverMeta.map((m) => [m.abbr, m.headshot_url])),
+    [driverMeta],
+  );
 
   if (selectedDrivers.length === 0) {
     return (
@@ -188,6 +223,15 @@ export function TelemetryView() {
           </p>
         )}
 
+        {duel && (
+          <LapComparator
+            telemetry={telemetry}
+            duel={duel}
+            headshots={headshots}
+            cornerMarks={cornerMarks}
+          />
+        )}
+
         <ChartPanel
           title="Velocidad"
           subtitle={sectorSplits ? "km/h · líneas = límites de sector" : "km/h"}
@@ -215,7 +259,10 @@ export function TelemetryView() {
             {chart("brake", 170, { domain: [0, 100] })}
           </ChartPanel>
           {telemetry.length > 1 ? (
-            <ChartPanel title={`Delta vs ${ref.driver}`} subtitle="positivo = pierde tiempo">
+            <ChartPanel
+              title={`Delta vs ${ref.driver}`}
+              subtitle="positivo = pierde tiempo · misma fracción de vuelta"
+            >
               {chart("delta", 170, {
                 format: (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`,
                 deltaMode: true,
@@ -244,7 +291,10 @@ export function TelemetryView() {
                 meta={driverMeta}
                 circuit={circuit}
                 sectorSplits={sectorSplits}
+                duel={duel}
               />
+            ) : circuit?.outline ? (
+              <CircuitOutline circuit={circuit} />
             ) : (
               <div className="flex h-40 items-center justify-center rounded-[22px] bg-black/30 px-6 text-center text-xs text-ink-3">
                 Mapa no disponible: esta sesión aún no tiene datos de posición. El reproductor y las
@@ -546,12 +596,10 @@ function Readout({
       {/* Grupo inset estilo iOS: filas redondeadas con separadores finos */}
       <div className="overflow-hidden rounded-[18px] bg-white/[0.04]">
         {telemetry.map((t, k) => {
-          const i = Math.min(idx, t.channels.speed.length - 1);
+          // Mismo punto de la vuelta (fracción), no el mismo índice de rejilla
+          const i = alignedIndex(ref, t, idx);
           const cur = sectorOf(t, i);
-          const delta =
-            k > 0
-              ? t.channels.time[i] - ref.channels.time[Math.min(idx, ref.channels.time.length - 1)]
-              : null;
+          const delta = k > 0 ? alignedValue(ref, t, "time", idx) - ref.channels.time[ri] : null;
           return (
             <div key={t.driver} className="border-b border-white/[0.06] px-3 py-2.5 last:border-0">
               <div className="flex items-center gap-2.5 text-sm">

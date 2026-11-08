@@ -1,8 +1,9 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+
+import { Popover } from "@/components/ui/Popover";
 
 export interface DropdownOption {
   key: string;
@@ -11,9 +12,10 @@ export interface DropdownOption {
 }
 
 /**
- * Selector en cápsula con menú de cristal (listbox accesible).
+ * Selector en cápsula con menú flotante (listbox accesible).
  * - Teclado: flechas, Home/End, Enter/Espacio, Escape, búsqueda por primera letra.
- * - Escritorio: menú flotante bajo el botón. Móvil: bottom sheet.
+ * - El menú se renderiza en un portal (Popover): nunca queda tapado por otras
+ *   tarjetas, la cabecera o la barra de pestañas. En móvil es un bottom sheet.
  */
 export function Dropdown<T>({
   label,
@@ -40,8 +42,13 @@ export function Dropdown<T>({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
+  const setButtonRef = useCallback((el: HTMLButtonElement | null) => {
+    buttonRef.current = el;
+    setAnchor(el);
+  }, []);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const listId = useId();
 
   const items = options.map(display);
@@ -53,21 +60,26 @@ export function Dropdown<T>({
     setOpen(true);
   };
 
-  const close = (refocus = true) => {
+  const close = useCallback((refocus = true) => {
     setOpen(false);
     if (refocus) buttonRef.current?.focus();
-  };
+  }, []);
 
   const choose = (i: number) => {
     onSelect(options[i]);
     close();
   };
 
-  // Foco al listbox al abrir y opción activa visible
-  useEffect(() => {
-    if (!open) return;
-    listRef.current?.focus();
-  }, [open]);
+  // El listbox se monta un frame después (cuando el Popover ha medido): foco al montar
+  const setListRef = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    // Abre centrado en la opción elegida (p. ej. R13 en una lista de 24 GPs)
+    el.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "center" });
+  }, []);
+
+  // Opción activa siempre visible
   useEffect(() => {
     if (!open) return;
     listRef.current
@@ -109,7 +121,7 @@ export function Dropdown<T>({
     >
       <p className={`eyebrow ${compact ? "" : "mb-1.5 pl-3"}`}>{label}</p>
       <button
-        ref={buttonRef}
+        ref={setButtonRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -124,6 +136,7 @@ export function Dropdown<T>({
         }}
         className={`pressable fill-control flex w-full items-center justify-between gap-2 rounded-full text-left font-semibold
           ${compact ? "h-8 pl-3.5 pr-2.5 text-xs" : "h-11 pl-4 pr-3 text-sm"}
+          ${open ? "bg-white/[0.12] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.18)]" : ""}
           ${disabled ? "cursor-not-allowed text-ink-3 opacity-60" : "hover:bg-white/10"}`}
       >
         <span className="truncate">{value}</span>
@@ -133,67 +146,49 @@ export function Dropdown<T>({
         />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* Fondo: cierra al pulsar fuera; en móvil oscurece como un sheet */}
-            <motion.div
-              className="fixed inset-0 z-40 max-md:bg-black/50"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => close(false)}
-            />
-            <motion.div
-              ref={listRef}
-              id={listId}
-              role="listbox"
-              tabIndex={-1}
-              aria-label={label}
-              aria-activedescendant={`${listId}-${active}`}
-              onKeyDown={onListKey}
-              initial={{ opacity: 0, y: -6, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -4, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 520, damping: 36 }}
-              className={`glass z-50 overflow-y-auto overscroll-contain p-1.5 outline-none
-                max-md:fixed max-md:inset-x-2 max-md:bottom-2 max-md:max-h-[65dvh] max-md:rounded-[28px] max-md:pb-[max(0.375rem,env(safe-area-inset-bottom))]
-                md:absolute md:left-0 md:mt-2 md:max-h-80 md:w-full md:min-w-60 md:origin-top md:rounded-[22px]
-                ${compact ? "md:top-full" : ""}`}
+      <Popover
+        ref={setListRef}
+        open={open}
+        onClose={() => close(false)}
+        anchor={anchor}
+        minWidth={compact ? 220 : 260}
+        sheetTitle={label}
+        id={listId}
+        role="listbox"
+        tabIndex={-1}
+        aria-label={label}
+        aria-activedescendant={`${listId}-${active}`}
+        onKeyDown={onListKey}
+      >
+        {items.map((d, i) => {
+          const selected = d.key === selectedKey;
+          return (
+            <div
+              key={d.key}
+              id={`${listId}-${i}`}
+              data-idx={i}
+              role="option"
+              aria-selected={selected}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => choose(i)}
+              className={`flex cursor-pointer items-center gap-3 rounded-[14px] px-3 py-2.5 text-sm transition-colors
+                ${i === active ? "bg-white/[0.1]" : ""}`}
             >
-              <p className="eyebrow px-3 pb-1 pt-2 md:hidden">{label}</p>
-              {items.map((d, i) => {
-                const selected = d.key === selectedKey;
-                return (
-                  <div
-                    key={d.key}
-                    id={`${listId}-${i}`}
-                    data-idx={i}
-                    role="option"
-                    aria-selected={selected}
-                    onMouseEnter={() => setActive(i)}
-                    onClick={() => choose(i)}
-                    className={`flex cursor-pointer items-center gap-3 rounded-[14px] px-3 py-2.5 text-sm transition-colors
-                      ${i === active ? "bg-white/[0.09]" : ""}`}
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={`block truncate ${selected ? "font-bold text-white" : "font-semibold text-ink"}`}
-                      >
-                        {d.text}
-                      </span>
-                      {d.sub && <span className="block truncate text-xs text-ink-3">{d.sub}</span>}
-                    </span>
-                    {selected && (
-                      <Check size={15} strokeWidth={3} className="shrink-0 text-f1red-bright" />
-                    )}
-                  </div>
-                );
-              })}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              <span className="min-w-0 flex-1">
+                <span
+                  className={`block truncate ${selected ? "font-bold text-white" : "font-semibold text-ink"}`}
+                >
+                  {d.text}
+                </span>
+                {d.sub && <span className="block truncate text-xs text-ink-3">{d.sub}</span>}
+              </span>
+              {selected && (
+                <Check size={15} strokeWidth={3} className="shrink-0 text-f1red-bright" />
+              )}
+            </div>
+          );
+        })}
+      </Popover>
     </div>
   );
 }

@@ -90,22 +90,62 @@ export const TEAM_LOGOS: Record<string, string> = {
   cadillac: "/teams/cadillac.png",
 };
 
-// Colores de equipo (constructorId de Jolpica). Fuente única para ambos mundiales.
+// Colores de respaldo por constructorId (Jolpica) si OpenF1 no responde.
+// Los reales se leen por temporada de OpenF1 (ver resolveTeamColor).
 export const TEAM_COLORS: Record<string, string> = {
-  red_bull: "#3671C6",
-  mercedes: "#27F4D2",
-  ferrari: "#E8002D",
-  mclaren: "#FF8000",
+  red_bull: "#4781D7",
+  mercedes: "#00D7B6",
+  ferrari: "#ED1131",
+  mclaren: "#F47600",
   aston_martin: "#229971",
-  alpine: "#FF87BC",
-  williams: "#64C4FF",
-  rb: "#6692FF",
-  racing_bulls: "#6692FF",
+  alpine: "#00A1E8",
+  williams: "#1868DB",
+  rb: "#6C98FF",
+  racing_bulls: "#6C98FF",
   kick_sauber: "#52E252",
   sauber: "#52E252",
-  haas: "#B6BABD",
+  haas: "#9C9FA2",
+  audi: "#F50537",
+  cadillac: "#909090",
 };
 
 export function teamColor(id: string): string {
   return TEAM_COLORS[id] ?? "#888888";
+}
+
+// Palabras clave para casar el constructorId de Jolpica con el nombre de equipo de OpenF1
+const TEAM_KEYWORDS: Record<string, string[]> = {
+  red_bull: ["red bull racing", "red bull"],
+  rb: ["racing bulls", "visa cash app rb", "rb"],
+  racing_bulls: ["racing bulls", "visa cash app rb", "rb"],
+  kick_sauber: ["kick sauber", "sauber"],
+  sauber: ["kick sauber", "sauber", "alfa romeo"],
+  alfa: ["alfa romeo"],
+  aston_martin: ["aston martin"],
+  mclaren: ["mclaren"],
+  mercedes: ["mercedes"],
+  ferrari: ["ferrari"],
+  alpine: ["alpine"],
+  williams: ["williams"],
+  haas: ["haas"],
+  audi: ["audi"],
+  cadillac: ["cadillac"],
+};
+
+/** Color del equipo en la temporada: paleta de OpenF1 si casa, si no el respaldo. */
+export function resolveTeamColor(
+  id: string,
+  seasonColors: Record<string, string> | undefined,
+): string {
+  if (seasonColors) {
+    const names = Object.keys(seasonColors);
+    for (const kw of TEAM_KEYWORDS[id] ?? [id.replace(/_/g, " ")]) {
+      const hit = names.find((n) => {
+        const name = n.toLowerCase();
+        return kw.length <= 3 ? name === kw : name.includes(kw);
+      });
+      if (hit) return seasonColors[hit];
+    }
+  }
+  return teamColor(id);
 }

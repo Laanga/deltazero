@@ -1,10 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-import { CAR_IMAGES, DRIVER_PHOTOS, TEAM_LOGOS, teamColor } from "@/lib/champAssets";
+import { useTeamColors } from "@/hooks/useF1Data";
+import {
+  CAR_IMAGES,
+  DRIVER_PHOTOS,
+  TEAM_LOGOS,
+  resolveTeamColor,
+  teamColor,
+} from "@/lib/champAssets";
 import { useSessionStore } from "@/store/sessionStore";
+
+/** Color de equipo de la temporada seleccionada (paleta oficial de OpenF1). */
+export function useTeamColor() {
+  const { data } = useTeamColors();
+  return useCallback((id: string) => resolveTeamColor(id, data), [data]);
+}
 
 export const METAL: Record<1 | 2 | 3, string> = { 1: "#e8c352", 2: "#c0c4cc", 3: "#c8845a" };
 

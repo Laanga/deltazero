@@ -1,9 +1,9 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { Download, FileSpreadsheet, ImageDown } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { Popover } from "@/components/ui/Popover";
 import { downloadCSV, exportSvgToPng } from "@/lib/export";
 
 /** Tarjeta de contenido con título, subtítulo y exportación opcional (PNG / CSV). */
@@ -32,6 +32,7 @@ export function ChartPanel({
 }) {
   const ref = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
+  const [exportBtn, setExportBtn] = useState<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState(false);
 
   const handlePng = async () => {
@@ -63,6 +64,7 @@ export function ChartPanel({
           {exportName && (
             <div className="relative">
               <button
+                ref={setExportBtn}
                 type="button"
                 onClick={() => setOpen((o) => !o)}
                 disabled={busy}
@@ -73,43 +75,37 @@ export function ChartPanel({
                 <Download size={12} />
                 {busy ? "…" : "Exportar"}
               </button>
-              <AnimatePresence>
-                {open && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-                    <motion.div
-                      role="menu"
-                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.97 }}
-                      transition={{ type: "spring", stiffness: 520, damping: 36 }}
-                      onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-                      className="glass absolute right-0 top-full z-40 mt-2 flex w-44 origin-top-right flex-col rounded-[20px] p-1.5"
-                    >
-                      {allowPng && (
-                        <button
-                          role="menuitem"
-                          autoFocus
-                          onClick={handlePng}
-                          className="flex items-center gap-2.5 rounded-[14px] px-3 py-2 text-left text-xs font-semibold text-ink hover:bg-white/[0.09]"
-                        >
-                          <ImageDown size={14} className="text-ink-3" /> Imagen PNG
-                        </button>
-                      )}
-                      {csvRows && (
-                        <button
-                          role="menuitem"
-                          autoFocus={!allowPng}
-                          onClick={handleCsv}
-                          className="flex items-center gap-2.5 rounded-[14px] px-3 py-2 text-left text-xs font-semibold text-ink hover:bg-white/[0.09]"
-                        >
-                          <FileSpreadsheet size={14} className="text-ink-3" /> Datos CSV
-                        </button>
-                      )}
-                    </motion.div>
-                  </>
+              <Popover
+                open={open}
+                onClose={() => setOpen(false)}
+                anchor={exportBtn}
+                align="end"
+                minWidth={176}
+                sheetTitle="Exportar"
+                role="menu"
+                onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+              >
+                {allowPng && (
+                  <button
+                    role="menuitem"
+                    autoFocus
+                    onClick={handlePng}
+                    className="flex w-full items-center gap-2.5 rounded-[14px] px-3 py-2.5 text-left text-sm font-semibold text-ink hover:bg-white/[0.1] md:py-2 md:text-xs"
+                  >
+                    <ImageDown size={14} className="text-ink-3" /> Imagen PNG
+                  </button>
                 )}
-              </AnimatePresence>
+                {csvRows && (
+                  <button
+                    role="menuitem"
+                    autoFocus={!allowPng}
+                    onClick={handleCsv}
+                    className="flex w-full items-center gap-2.5 rounded-[14px] px-3 py-2.5 text-left text-sm font-semibold text-ink hover:bg-white/[0.1] md:py-2 md:text-xs"
+                  >
+                    <FileSpreadsheet size={14} className="text-ink-3" /> Datos CSV
+                  </button>
+                )}
+              </Popover>
             </div>
           )}
         </div>

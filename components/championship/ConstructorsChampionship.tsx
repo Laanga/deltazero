@@ -11,10 +11,10 @@ import {
   RankBadge,
   StandingsSkeleton,
   TeamLogo,
+  useTeamColor,
 } from "@/components/championship/shared";
 import { NationalityBadge } from "@/components/NationalityBadge";
 import { useConstructorStandings, useDriverStandings } from "@/hooks/useF1Data";
-import { teamColor } from "@/lib/champAssets";
 import type { ConstructorStanding } from "@/lib/types";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -47,7 +47,8 @@ function PodiumCard({
   drivers: string[];
   index: number;
 }) {
-  const color = teamColor(constructor.constructor_id);
+  const teamColorOf = useTeamColor();
+  const color = teamColorOf(constructor.constructor_id);
   const logoSize = rank === 1 ? 72 : 60;
   return (
     <PodiumShell rank={rank} color={color} index={index}>
@@ -108,7 +109,8 @@ function ConstructorRow({
   drivers: string[];
   index: number;
 }) {
-  const color = teamColor(constructor.constructor_id);
+  const teamColorOf = useTeamColor();
+  const color = teamColorOf(constructor.constructor_id);
   const pct = maxPoints > 0 ? (constructor.points / maxPoints) * 100 : 0;
   return (
     <div
