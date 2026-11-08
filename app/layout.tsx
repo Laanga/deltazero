@@ -59,11 +59,7 @@ export const metadata: Metadata = {
     "DeltaZero",
   ],
   alternates: {
-    canonical: "/",
-  },
-  icons: {
-    icon: "/icon.png",
-    apple: "/icon.png",
+    canonical: SITE_URL,
   },
   robots: {
     index: true,

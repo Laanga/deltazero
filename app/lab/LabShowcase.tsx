@@ -11,6 +11,7 @@ import { Badge, Chip } from "@/components/ui/Chip";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Sheet } from "@/components/ui/Sheet";
+import { withBasePath } from "@/lib/site";
 import { CircuitOutline } from "@/components/telemetry/TrackMap";
 import { api } from "@/lib/api";
 
@@ -108,14 +109,14 @@ export function LabShowcase() {
         <ChartPanel title="Avatares y sheet">
           <div className="flex items-center gap-3">
             <DriverAvatar
-              url="/drivers/2026-VER.webp"
+              url={withBasePath("/drivers/2026-VER.webp")}
               color="#3671C6"
               size={48}
               alt="Max Verstappen"
               ring
             />
             <DriverAvatar
-              url="/drivers/2026-LEC.webp"
+              url={withBasePath("/drivers/2026-LEC.webp")}
               color="#E8002D"
               size={40}
               alt="Charles Leclerc"
