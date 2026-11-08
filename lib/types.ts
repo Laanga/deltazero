@@ -101,7 +101,12 @@ export interface Corner {
 
 export interface CircuitInfo {
   corners: Corner[];
+  /** Rotación oficial del trazado en grados (la que usa la retransmisión). */
   rotation: number;
+  /** Silueta completa del circuito (mismas coordenadas que la telemetría de posición). */
+  outline: { x: number[]; y: number[] } | null;
+  /** Sectores de comisarios: posiciones de los paneles a lo largo de la pista. */
+  marshalSectors: { number: number; x: number; y: number }[];
 }
 
 export interface SessionResultRow {

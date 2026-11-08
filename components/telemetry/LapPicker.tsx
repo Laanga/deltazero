@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 
+import { Dropdown } from "@/components/ui/Dropdown";
 import { useLaps } from "@/hooks/useF1Data";
 import { useSessionStore } from "@/store/sessionStore";
 
 export function LapPicker() {
-  const { lap, setLap, selectedDrivers } = useSessionStore();
+  const { lap, setLap, selectedDrivers } = useSessionStore(
+    useShallow((s) => ({ lap: s.lap, setLap: s.setLap, selectedDrivers: s.selectedDrivers })),
+  );
   const { data: laps } = useLaps();
 
   // Solo vueltas con tiempo válido para TODOS los pilotos seleccionados:
@@ -32,21 +36,19 @@ export function LapPicker() {
   }, [lap, laps, lapOptions, setLap]);
 
   if (selectedDrivers.length === 0) return null;
+  const options = ["fastest", ...lapOptions.map(String)];
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Vuelta</span>
-      <select
-        value={lap}
-        onChange={(e) => setLap(e.target.value)}
-        className="rounded border border-edge bg-panel px-3 py-1.5 text-sm font-semibold outline-none transition-colors hover:border-f1red/50"
-      >
-        <option value="fastest">Más rápida</option>
-        {lapOptions.map((n) => (
-          <option key={n} value={String(n)}>
-            Vuelta {n}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Dropdown
+      compact
+      label="Vuelta"
+      value={lap === "fastest" ? "Más rápida" : `Vuelta ${lap}`}
+      selectedKey={lap}
+      options={options}
+      display={(o) => ({
+        key: o,
+        text: o === "fastest" ? "Más rápida de cada piloto" : `Vuelta ${o}`,
+      })}
+      onSelect={setLap}
+    />
   );
 }

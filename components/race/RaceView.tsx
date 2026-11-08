@@ -19,6 +19,7 @@ import { DriverTag } from "@/components/DriverTag";
 import { useGaps, usePositions, useRaceEvents, useResults, useStrategy } from "@/hooks/useF1Data";
 import { api } from "@/lib/api";
 import { AXIS, GRID, TOOLTIP as TOOLTIP_BASE } from "@/lib/chartDefaults";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { useSessionStore } from "@/store/sessionStore";
 
 // La parrilla completa cabe mucha gente: limita la altura del tooltip
@@ -36,7 +37,9 @@ const EVENT_COLORS: Record<string, string> = {
 const FIRST_DATA_YEAR = 2023; // OpenF1 no tiene telemetría/gaps antes de esto
 
 export function RaceView() {
-  const { year, gp, selectedDrivers } = useSessionStore();
+  const year = useSessionStore((s) => s.year);
+  const gp = useSessionStore((s) => s.gp);
+  const selectedDrivers = useSessionStore((s) => s.selectedDrivers);
   const { data: positions, isLoading: loadingPos } = usePositions();
   const { data: gaps, isLoading: loadingGaps } = useGaps();
   const { data: events } = useRaceEvents();
@@ -67,16 +70,16 @@ export function RaceView() {
     return [...set];
   }, [positions]);
 
-  const highlight = selectedDrivers.length > 0 ? new Set(selectedDrivers) : null;
+  const highlight = useMemo(
+    () => (selectedDrivers.length > 0 ? new Set(selectedDrivers) : null),
+    [selectedDrivers],
+  );
 
   const positionData = useMemo(
     () => positions?.map((p) => ({ lap: p.lap, ...p.positions })) ?? [],
     [positions],
   );
-  const gapData = useMemo(
-    () => gaps?.map((g) => ({ lap: g.lap, ...g.gaps })) ?? [],
-    [gaps],
-  );
+  const gapData = useMemo(() => gaps?.map((g) => ({ lap: g.lap, ...g.gaps })) ?? [], [gaps]);
 
   // Paradas por piloto = primera vuelta de cada stint posterior al primero
   const pitLapsByDriver = useMemo(() => {
@@ -89,7 +92,9 @@ export function RaceView() {
 
   // Ventana de paradas: rango donde se concentra el 80% central de las paradas
   const pitWindow = useMemo(() => {
-    const all = Object.values(pitLapsByDriver).flat().sort((a, b) => a - b);
+    const all = Object.values(pitLapsByDriver)
+      .flat()
+      .sort((a, b) => a - b);
     if (all.length === 0) return null;
     if (all.length < 4) return { from: all[0], to: all[all.length - 1] };
     const q = (p: number) => all[Math.floor(p * (all.length - 1))];
@@ -119,12 +124,15 @@ export function RaceView() {
     for (const r of gapData) laps.add(r.lap as number);
     for (const l of cmpByLap.keys()) laps.add(l);
     const base = new Map(gapData.map((r) => [r.lap as number, r]));
-    return [...laps].sort((a, b) => a - b).map((lap) => {
-      const row: Record<string, number> = { ...(base.get(lap) ?? { lap }) };
-      const cmp = cmpByLap.get(lap);
-      if (cmp) for (const d of selectedDrivers) if (cmp[d] != null) row[`${d} ${compareYear}`] = cmp[d];
-      return row;
-    });
+    return [...laps]
+      .sort((a, b) => a - b)
+      .map((lap) => {
+        const row: Record<string, number> = { ...(base.get(lap) ?? { lap }) };
+        const cmp = cmpByLap.get(lap);
+        if (cmp)
+          for (const d of selectedDrivers) if (cmp[d] != null) row[`${d} ${compareYear}`] = cmp[d];
+        return row;
+      });
   }, [gapData, cmpByLap, compareYear, selectedDrivers]);
 
   // Rangos consecutivos de SC/VSC/RED para pintar bandas
@@ -172,11 +180,12 @@ export function RaceView() {
     animationDuration: 1100,
   });
 
-  const matrixCsv = (rows: Record<string, number | undefined>[]) => (): (string | number | null)[][] => {
-    const header = ["vuelta", ...allDrivers];
-    const out = rows.map((r) => [r.lap ?? "", ...allDrivers.map((d) => r[d] ?? "")]);
-    return [header, ...out];
-  };
+  const matrixCsv =
+    (rows: Record<string, number | undefined>[]) => (): (string | number | null)[][] => {
+      const header = ["vuelta", ...allDrivers];
+      const out = rows.map((r) => [r.lap ?? "", ...allDrivers.map((d) => r[d] ?? "")]);
+      return [header, ...out];
+    };
 
   return (
     <div className="space-y-5">
@@ -190,13 +199,34 @@ export function RaceView() {
           <LineChart data={positionData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
             <CartesianGrid {...GRID} />
             <XAxis dataKey="lap" {...AXIS} />
-            <YAxis {...AXIS} reversed domain={[1, allDrivers.length]} tickCount={allDrivers.length} allowDecimals={false} />
-            <Tooltip {...TOOLTIP} labelFormatter={(v) => `Vuelta ${v}`} itemSorter={(item) => item.value as number} />
+            <YAxis
+              {...AXIS}
+              reversed
+              domain={[1, allDrivers.length]}
+              tickCount={allDrivers.length}
+              allowDecimals={false}
+            />
+            <Tooltip
+              {...TOOLTIP}
+              labelFormatter={(v) => `Vuelta ${v}`}
+              itemSorter={(item) => item.value as number}
+            />
             {pitWindow && (
-              <ReferenceArea x1={pitWindow.from} x2={pitWindow.to} fill="#a1a1aa" fillOpacity={0.06} />
+              <ReferenceArea
+                x1={pitWindow.from}
+                x2={pitWindow.to}
+                fill="#a1a1aa"
+                fillOpacity={0.06}
+              />
             )}
             {eventBands.map((b, i) => (
-              <ReferenceArea key={i} x1={b.from} x2={b.to} fill={EVENT_COLORS[b.type]} fillOpacity={0.08} />
+              <ReferenceArea
+                key={i}
+                x1={b.from}
+                x2={b.to}
+                fill={EVENT_COLORS[b.type]}
+                fillOpacity={0.08}
+              />
             ))}
             {highlightedPits.map((p, i) => (
               <ReferenceLine
@@ -213,7 +243,7 @@ export function RaceView() {
           </LineChart>
         </ResponsiveContainer>
         {highlightedPits.length > 0 && (
-          <p className="mt-2 text-[11px] text-zinc-500">
+          <p className="mt-2 text-[11px] text-ink-3">
             Líneas verticales punteadas = paradas de los pilotos seleccionados.
           </p>
         )}
@@ -221,32 +251,32 @@ export function RaceView() {
 
       {/* Comparativa histórica */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-          Comparar gap con
-        </span>
-        <select
-          value={compareYear ?? ""}
-          onChange={(e) => setCompareYear(e.target.value ? Number(e.target.value) : null)}
-          className="rounded border border-edge bg-panel px-3 py-1.5 text-sm font-semibold outline-none transition-colors hover:border-f1red/50"
-        >
-          <option value="">Sin comparar</option>
-          {compareOptions.map((y) => (
-            <option key={y} value={String(y)}>
-              {gp} {y}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          compact
+          label="Comparar gap con"
+          value={compareYear != null ? `${gp} ${compareYear}` : "Sin comparar"}
+          selectedKey={compareYear != null ? String(compareYear) : "none"}
+          options={["none", ...compareOptions.map(String)]}
+          display={(o) => ({ key: o, text: o === "none" ? "Sin comparar" : `${gp} ${o}` })}
+          onSelect={(o) => setCompareYear(o === "none" ? null : Number(o))}
+        />
         {compareYear != null && selectedDrivers.length === 0 && (
-          <span className="text-xs text-zinc-500">Selecciona pilotos para superponer su gap</span>
+          <span className="text-xs text-ink-3">Selecciona pilotos para superponer su gap</span>
         )}
         {compareYear != null && !compareGaps.isLoading && cmpByLap.size === 0 && (
-          <span className="text-xs text-amber-500/80">No hay datos de {gp} en {compareYear}</span>
+          <span className="text-xs text-amber-500/80">
+            No hay datos de {gp} en {compareYear}
+          </span>
         )}
       </div>
 
       <ChartPanel
         title="Gap vs líder"
-        subtitle={compareYear != null ? `línea punteada = ${compareYear}` : "segundos perdidos respecto al líder de cada vuelta"}
+        subtitle={
+          compareYear != null
+            ? `línea punteada = ${compareYear}`
+            : "segundos perdidos respecto al líder de cada vuelta"
+        }
         exportName="gap-vs-lider"
         csvRows={matrixCsv(gapData)}
       >
@@ -255,9 +285,20 @@ export function RaceView() {
             <CartesianGrid {...GRID} />
             <XAxis dataKey="lap" {...AXIS} />
             <YAxis {...AXIS} tickFormatter={(v) => `${v}s`} />
-            <Tooltip {...TOOLTIP} labelFormatter={(v) => `Vuelta ${v}`} formatter={(v) => `${(v as number).toFixed(1)}s`} itemSorter={(item) => item.value as number} />
+            <Tooltip
+              {...TOOLTIP}
+              labelFormatter={(v) => `Vuelta ${v}`}
+              formatter={(v) => `${(v as number).toFixed(1)}s`}
+              itemSorter={(item) => item.value as number}
+            />
             {eventBands.map((b, i) => (
-              <ReferenceArea key={i} x1={b.from} x2={b.to} fill={EVENT_COLORS[b.type]} fillOpacity={0.08} />
+              <ReferenceArea
+                key={i}
+                x1={b.from}
+                x2={b.to}
+                fill={EVENT_COLORS[b.type]}
+                fillOpacity={0.08}
+              />
             ))}
             {allDrivers.map((d) => (
               <Line key={d} type="monotone" dataKey={d} {...lineProps(d)} connectNulls />
@@ -300,9 +341,9 @@ export function RaceView() {
           ]}
         >
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full border-separate border-spacing-y-1 text-sm">
               <thead>
-                <tr className="border-b border-edge text-left text-[10px] uppercase tracking-[0.15em] text-zinc-500">
+                <tr className="text-left text-[10px] uppercase tracking-[0.15em] text-ink-3">
                   <th className="px-3 py-2">Pos</th>
                   <th className="px-3 py-2">Piloto</th>
                   <th className="px-3 py-2">Equipo</th>
@@ -315,10 +356,10 @@ export function RaceView() {
                 {results.map((r) => (
                   <tr
                     key={r.driver}
-                    className={`border-b border-edge/40 transition-colors hover:bg-panel-light
-                      ${highlight?.has(r.driver) ? "bg-f1red/10" : ""}`}
+                    className={`transition-colors [&>td:first-child]:rounded-l-full [&>td:last-child]:rounded-r-full
+                      ${highlight?.has(r.driver) ? "bg-f1red/12" : "bg-white/[0.025] hover:bg-white/[0.06]"}`}
                   >
-                    <td className="px-3 py-2 font-black">{r.position ?? "—"}</td>
+                    <td className="px-3 py-2 pl-4 font-black tabular-nums">{r.position ?? "—"}</td>
                     <td className="px-3 py-2">
                       <DriverTag
                         code={r.driver}
@@ -328,10 +369,12 @@ export function RaceView() {
                         size={30}
                       />
                     </td>
-                    <td className="px-3 py-2 text-zinc-400">{r.team}</td>
-                    <td className="px-3 py-2 text-right text-zinc-400">{r.grid_position ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-bold">{r.points > 0 ? `+${r.points}` : "0"}</td>
-                    <td className="px-3 py-2 text-xs text-zinc-500">{r.status}</td>
+                    <td className="px-3 py-2 text-ink-2">{r.team}</td>
+                    <td className="px-3 py-2 text-right text-ink-2">{r.grid_position ?? "—"}</td>
+                    <td className="px-3 py-2 text-right font-bold">
+                      {r.points > 0 ? `+${r.points}` : "0"}
+                    </td>
+                    <td className="px-3 py-2 pr-4 text-xs text-ink-3">{r.status}</td>
                   </tr>
                 ))}
               </tbody>

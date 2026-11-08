@@ -20,6 +20,7 @@ import { useDrivers, useLaps, useRaceEvents } from "@/hooks/useF1Data";
 import { AXIS, GRID, TOOLTIP } from "@/lib/chartDefaults";
 import { compoundColor, formatLapTime, lineDashFor } from "@/lib/utils";
 import { useSessionStore } from "@/store/sessionStore";
+import { Chip } from "@/components/ui/Chip";
 
 // Tope de delta (s) para el heatmap de degradación: a partir de aquí, rojo pleno.
 const HEAT_CAP = 2;
@@ -31,20 +32,9 @@ function heatColor(delta: number) {
   return `hsl(${hue}, 68%, 45%)`;
 }
 
-function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors
-        ${on ? "border-f1red bg-f1red/15 text-white" : "border-edge bg-panel text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
 export function LapsView() {
-  const { selectedDrivers, session } = useSessionStore();
+  const selectedDrivers = useSessionStore((s) => s.selectedDrivers);
+  const session = useSessionStore((s) => s.session);
   const { data: drivers } = useDrivers();
   const { data: laps, isLoading } = useLaps();
   const { data: raceEvents } = useRaceEvents();
@@ -99,7 +89,10 @@ export function LapsView() {
 
   // Scatter con color de compuesto
   const scatterByDriver = useMemo(() => {
-    const out: Record<string, { lap: number; time: number; compound: string | null; best: boolean }[]> = {};
+    const out: Record<
+      string,
+      { lap: number; time: number; compound: string | null; best: boolean }[]
+    > = {};
     for (const l of filtered) {
       (out[l.driver] ??= []).push({
         lap: l.lap_number,
@@ -136,7 +129,12 @@ export function LapsView() {
   }, [laps, selectedDrivers]);
 
   if (selectedDrivers.length === 0) {
-    return <EmptyState message="Selecciona pilotos para comparar sus tiempos de vuelta" />;
+    return (
+      <EmptyState
+        message="Selecciona pilotos para comparar sus tiempos de vuelta"
+        hint="Evolución, degradación, compuestos y mejores sectores de hasta cinco pilotos."
+      />
+    );
   }
   if (isLoading) {
     return (
@@ -166,17 +164,17 @@ export function LapsView() {
     <div className="space-y-5">
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Filtros</span>
-        <Toggle on={excludePits} onClick={() => setExcludePits((v) => !v)}>
+        <span className="eyebrow pl-1 pr-1">Filtros</span>
+        <Chip on={excludePits} onClick={() => setExcludePits((v) => !v)}>
           Sin entradas/salidas de box
-        </Toggle>
-        <Toggle on={excludeLap1} onClick={() => setExcludeLap1((v) => !v)}>
+        </Chip>
+        <Chip on={excludeLap1} onClick={() => setExcludeLap1((v) => !v)}>
           Sin vuelta 1
-        </Toggle>
+        </Chip>
         {isRace && (
-          <Toggle on={excludeCaution} onClick={() => setExcludeCaution((v) => !v)}>
+          <Chip on={excludeCaution} onClick={() => setExcludeCaution((v) => !v)}>
             Sin SC/VSC
-          </Toggle>
+          </Chip>
         )}
       </div>
 
@@ -189,7 +187,17 @@ export function LapsView() {
         <ResponsiveContainer width="100%" height={340}>
           <LineChart data={evolution} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid {...GRID} />
-            <XAxis dataKey="lap" {...AXIS} label={{ value: "Vuelta", position: "insideBottom", offset: -2, fontSize: 11, fill: "#52525b" }} />
+            <XAxis
+              dataKey="lap"
+              {...AXIS}
+              label={{
+                value: "Vuelta",
+                position: "insideBottom",
+                offset: -2,
+                fontSize: 11,
+                fill: "#5a5a66",
+              }}
+            />
             <YAxis
               {...AXIS}
               width={68}
@@ -197,8 +205,12 @@ export function LapsView() {
               tickFormatter={(v) => formatLapTime(v)}
               reversed={false}
             />
-            <Tooltip {...TOOLTIP} formatter={(v) => formatLapTime(v as number)} labelFormatter={(v) => `Vuelta ${v}`} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Tooltip
+              {...TOOLTIP}
+              formatter={(v) => formatLapTime(v as number)}
+              labelFormatter={(v) => `Vuelta ${v}`}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
             {driverMeta.map((d, i) => (
               <Line
                 key={d.abbr}
@@ -224,7 +236,7 @@ export function LapsView() {
         csvRows={lapMatrixCsv}
       >
         {maxLap === 0 ? (
-          <div className="flex h-24 items-center justify-center text-sm text-zinc-600">
+          <div className="flex h-24 items-center justify-center text-sm text-ink-3">
             No hay vueltas válidas con los filtros actuales
           </div>
         ) : (
@@ -233,7 +245,7 @@ export function LapsView() {
               <div className="min-w-max space-y-1">
                 <div className="flex items-center gap-0.5 pl-12">
                   {lapAxis.map((n) => (
-                    <div key={n} className="w-3.5 text-center text-[8px] leading-none text-zinc-600">
+                    <div key={n} className="w-3.5 text-center text-[8px] leading-none text-ink-3">
                       {n % 5 === 0 ? n : ""}
                     </div>
                   ))}
@@ -249,11 +261,15 @@ export function LapsView() {
                       return (
                         <div
                           key={n}
-                          title={t != null ? `V${n} · ${formatLapTime(t)} (+${(delta ?? 0).toFixed(3)}s)` : `V${n} · —`}
-                          className="h-4 w-3.5 rounded-[2px]"
+                          title={
+                            t != null
+                              ? `V${n} · ${formatLapTime(t)} (+${(delta ?? 0).toFixed(3)}s)`
+                              : `V${n} · —`
+                          }
+                          className="h-4 w-3.5 rounded-[5px]"
                           style={{
-                            background: delta != null ? heatColor(delta) : "transparent",
-                            border: delta == null ? "1px solid #26262f" : "none",
+                            background:
+                              delta != null ? heatColor(delta) : "rgb(255 255 255 / 0.04)",
                           }}
                         />
                       );
@@ -262,11 +278,13 @@ export function LapsView() {
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+            <div className="flex items-center gap-2 text-[11px] text-ink-3">
               <span>mejor vuelta</span>
               <span
                 className="h-2.5 w-32 rounded-full"
-                style={{ background: `linear-gradient(90deg, ${heatColor(0)}, ${heatColor(HEAT_CAP / 2)}, ${heatColor(HEAT_CAP)})` }}
+                style={{
+                  background: `linear-gradient(90deg, ${heatColor(0)}, ${heatColor(HEAT_CAP / 2)}, ${heatColor(HEAT_CAP)})`,
+                }}
               />
               <span>+{HEAT_CAP}s o más</span>
             </div>
@@ -283,17 +301,37 @@ export function LapsView() {
           <ResponsiveContainer width="100%" height={280}>
             <ScatterChart margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid {...GRID} />
-              <XAxis dataKey="lap" name="Vuelta" {...AXIS} type="number" domain={["dataMin", "dataMax"]} />
-              <YAxis dataKey="time" name="Tiempo" {...AXIS} width={68} domain={["auto", "auto"]} tickFormatter={(v) => formatLapTime(v)} />
+              <XAxis
+                dataKey="lap"
+                name="Vuelta"
+                {...AXIS}
+                type="number"
+                domain={["dataMin", "dataMax"]}
+              />
+              <YAxis
+                dataKey="time"
+                name="Tiempo"
+                {...AXIS}
+                width={68}
+                domain={["auto", "auto"]}
+                tickFormatter={(v) => formatLapTime(v)}
+              />
               <ZAxis range={[28, 28]} />
-              <Tooltip {...TOOLTIP} formatter={(v, name) => (name === "Tiempo" ? formatLapTime(v as number) : v)} />
+              <Tooltip
+                {...TOOLTIP}
+                formatter={(v, name) => (name === "Tiempo" ? formatLapTime(v as number) : v)}
+              />
               {Object.entries(scatterByDriver).map(([driver, points]) => (
                 <Scatter
                   key={driver}
                   name={driver}
                   data={points}
                   fill="#888"
-                  shape={(props: { cx?: number; cy?: number; payload?: { compound: string | null; best: boolean } }) => {
+                  shape={(props: {
+                    cx?: number;
+                    cy?: number;
+                    payload?: { compound: string | null; best: boolean };
+                  }) => {
                     const { cx, cy, payload } = props;
                     if (cx == null || cy == null || !payload) return <g />;
                     return (
@@ -312,45 +350,59 @@ export function LapsView() {
               ))}
             </ScatterChart>
           </ResponsiveContainer>
-          <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-zinc-400">
+          <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-ink-2">
             {["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"].map((c) => (
               <span key={c} className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: compoundColor(c) }} />
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: compoundColor(c) }}
+                />
                 {c}
               </span>
             ))}
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full border-2 border-purple-500" />
+              <span className="h-2.5 w-2.5 rounded-full border-2 border-pb" />
               personal best
             </span>
           </div>
         </ChartPanel>
 
         <ChartPanel title="Mejores sectores" subtitle="morado = mejor del grupo">
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-1">
             {sectorBests.map((s) => {
               const meta = driverMeta.find((d) => d.abbr === s.driver);
               return (
                 <div key={s.driver}>
                   <div className="mb-1.5 flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: meta?.team_color }} />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: meta?.team_color }}
+                    />
                     <span className="text-sm font-bold">{s.driver}</span>
                   </div>
                   <div className="flex gap-2">
-                    {([["S1", s.s1, globalBest.s1], ["S2", s.s2, globalBest.s2], ["S3", s.s3, globalBest.s3]] as const).map(
-                      ([label, val, best]) => (
-                        <div
-                          key={label}
-                          className={`flex-1 rounded-lg border px-3 py-2 text-center transition-all duration-300
-                            ${val != null && val === best ? "border-purple-500/60 bg-purple-500/15 shadow-lg shadow-purple-500/10" : "border-edge bg-panel"}`}
+                    {(
+                      [
+                        ["S1", s.s1, globalBest.s1],
+                        ["S2", s.s2, globalBest.s2],
+                        ["S3", s.s3, globalBest.s3],
+                      ] as const
+                    ).map(([label, val, best]) => (
+                      <div
+                        key={label}
+                        className={`flex-1 rounded-[18px] px-3 py-2 text-center transition-all duration-300
+                            ${val != null && val === best ? "bg-pb/20 shadow-[inset_0_0_0_1px_rgb(176_38_255/0.55),0_8px_24px_-10px_rgb(176_38_255/0.6)]" : "fill-control"}`}
+                      >
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-ink-3">
+                          {label}
+                        </p>
+                        <p
+                          className={`font-mono text-sm font-bold tabular-nums ${val != null && val === best ? "text-purple-200" : ""}`}
                         >
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</p>
-                          <p className={`font-mono text-sm font-bold ${val != null && val === best ? "text-purple-300" : ""}`}>
-                            {val != null ? val.toFixed(3) : "—"}
-                          </p>
-                        </div>
-                      ),
-                    )}
+                          {val != null ? val.toFixed(3) : "—"}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               );

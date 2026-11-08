@@ -1,23 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 // Zona por defecto en SSR/primer render (evita desajuste de hidratación).
-// Tras montar, se sustituye por la zona real del navegador.
+// En cliente se usa la zona real del navegador.
 const DEFAULT_TZ = "Europe/Madrid";
 
-/** Zona horaria del usuario, estable en hidratación (default hasta montar). */
+const subscribe = () => () => {};
+function browserTz(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ;
+  } catch {
+    return DEFAULT_TZ;
+  }
+}
+
+/** Zona horaria del usuario, estable en hidratación. */
 export function useTimeZone(): string {
-  const [tz, setTz] = useState(DEFAULT_TZ);
-  useEffect(() => {
-    try {
-      const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (resolved) setTz(resolved);
-    } catch {
-      /* mantén el default */
-    }
-  }, []);
-  return tz;
+  return useSyncExternalStore(subscribe, browserTz, () => DEFAULT_TZ);
 }
 
 /** Etiqueta corta de una zona (p. ej. "CEST", "GMT+2") para badges. */

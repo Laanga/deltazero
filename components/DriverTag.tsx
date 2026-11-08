@@ -20,7 +20,7 @@ export function DriverTag({
     <span className="flex items-center gap-2.5 font-bold">
       <DriverAvatar url={headshot} color={color} size={size} alt={fullName} />
       {code}
-      <span className={`font-normal text-zinc-500 ${hideNameOnMobile ? "hidden sm:inline" : ""}`}>
+      <span className={`font-normal text-ink-3 ${hideNameOnMobile ? "hidden sm:inline" : ""}`}>
         {fullName}
       </span>
     </span>

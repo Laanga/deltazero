@@ -1,49 +1,33 @@
 "use client";
 
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
-import { useRef } from "react";
+import { Check, X } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 import { DriverAvatar } from "@/components/DriverAvatar";
-import { DRIVER_PHOTOS } from "@/lib/champAssets";
 import { useDrivers } from "@/hooks/useF1Data";
-import { useSessionStore } from "@/store/sessionStore";
-
-gsap.registerPlugin(useGSAP);
+import { DRIVER_PHOTOS } from "@/lib/champAssets";
+import { MAX_DRIVERS, useSessionStore } from "@/store/sessionStore";
 
 export function DriverSelector() {
-  const ref = useRef<HTMLDivElement>(null);
   const { data: drivers, isLoading, isError } = useDrivers();
-  const { selectedDrivers, toggleDriver, session } = useSessionStore();
-
-  useGSAP(
-    () => {
-      if (drivers?.length) {
-        gsap.from(".driver-chip", {
-          opacity: 0,
-          y: 16,
-          scale: 0.9,
-          duration: 0.45,
-          stagger: 0.035,
-          ease: "back.out(1.6)",
-          clearProps: "opacity,transform",
-        });
-      }
-    },
-    { dependencies: [drivers], scope: ref },
+  const { selectedDrivers, toggleDriver, clearDrivers, session } = useSessionStore(
+    useShallow((s) => ({
+      selectedDrivers: s.selectedDrivers,
+      toggleDriver: s.toggleDriver,
+      clearDrivers: s.clearDrivers,
+      session: s.session,
+    })),
   );
 
   if (!session) return null;
 
   if (isLoading) {
     return (
-      <div className="space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-          Pilotos — cargando sesión (la primera vez tarda un poco)…
-        </p>
+      <div className="space-y-2.5">
+        <p className="eyebrow pl-3">Pilotos — cargando sesión…</p>
         <div className="flex flex-wrap gap-2">
           {Array.from({ length: 20 }).map((_, i) => (
-            <div key={i} className="skeleton h-9 w-20" />
+            <div key={i} className="skeleton h-10 w-24 !rounded-full" />
           ))}
         </div>
       </div>
@@ -51,33 +35,75 @@ export function DriverSelector() {
   }
 
   if (isError) {
-    return <p className="text-sm text-red-400">No se pudo cargar la sesión. Prueba con otra.</p>;
+    return (
+      <p className="pl-3 text-sm text-red-300">No se pudo cargar la sesión. Prueba con otra.</p>
+    );
   }
 
+  const full = selectedDrivers.length >= MAX_DRIVERS;
+
   return (
-    <div ref={ref}>
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-        Pilotos <span className="text-zinc-600">(máx. 5 — {selectedDrivers.length} seleccionados)</span>
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {drivers?.map((d) => {
+    <div>
+      <div className="mb-2.5 flex items-center gap-2 pl-3">
+        <p className="eyebrow">
+          Pilotos{" "}
+          <span className="text-ink-3/70 normal-case tracking-normal">
+            · {selectedDrivers.length}/{MAX_DRIVERS}
+          </span>
+        </p>
+        {selectedDrivers.length > 0 && (
+          <button
+            type="button"
+            onClick={clearDrivers}
+            className="pressable ml-auto flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-ink-3 hover:bg-white/[0.07] hover:text-ink"
+          >
+            <X size={12} /> Limpiar
+          </button>
+        )}
+      </div>
+      <div
+        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] md:flex-wrap md:overflow-visible"
+        role="group"
+        aria-label="Selección de pilotos"
+      >
+        {drivers?.map((d, i) => {
           const active = selectedDrivers.includes(d.abbreviation);
+          const blocked = full && !active;
           return (
             <button
               key={d.abbreviation}
+              type="button"
+              aria-pressed={active}
+              disabled={blocked}
               onClick={() => toggleDriver(d.abbreviation)}
               title={`${d.full_name} — ${d.team}`}
               style={
-                active
-                  ? { borderColor: d.team_color, boxShadow: `0 0 16px ${d.team_color}55`, background: `${d.team_color}22` }
-                  : undefined
+                {
+                  "--i": i,
+                  ...(active
+                    ? {
+                        background: `linear-gradient(180deg, ${d.team_color}40, ${d.team_color}1c)`,
+                        boxShadow: `inset 0 0 0 1.5px ${d.team_color}, 0 8px 22px -10px ${d.team_color}`,
+                      }
+                    : {}),
+                } as React.CSSProperties
               }
-              className={`driver-chip group flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-bold transition-all duration-200
-                ${active ? "scale-105 text-white" : "border-edge bg-panel text-zinc-400 hover:scale-105 hover:border-zinc-500 hover:text-white"}`}
+              className={`stagger pressable group flex h-10 shrink-0 items-center gap-2 rounded-full pl-1 pr-3.5 text-sm font-bold
+                ${active ? "text-white" : "fill-control text-ink-2 hover:bg-white/10 hover:text-white"}
+                ${blocked ? "opacity-35" : ""}`}
             >
-              <DriverAvatar url={DRIVER_PHOTOS[d.abbreviation] ?? d.headshot_url} color={d.team_color} size={40} alt={d.full_name} />
+              <DriverAvatar
+                url={DRIVER_PHOTOS[d.abbreviation] ?? d.headshot_url}
+                color={d.team_color}
+                size={32}
+                alt={d.full_name}
+              />
               {d.abbreviation}
-              <span className="text-[10px] font-normal text-zinc-500">{d.number}</span>
+              {active ? (
+                <Check size={13} strokeWidth={3} style={{ color: d.team_color }} />
+              ) : (
+                <span className="text-[10px] font-normal tabular-nums text-ink-3">{d.number}</span>
+              )}
             </button>
           );
         })}

@@ -23,11 +23,13 @@ const f1Wide = localFont({
   variable: "--font-f1-wide",
 });
 
-// Fallback con buen soporte de acentos y pesos intermedios
+// Fallback para glifos que F1 Display no cubre. Sin preload: el navegador solo
+// lo descarga si de verdad hace falta (unicode-range), no en cada visita.
 const titillium = Titillium_Web({
   variable: "--font-titillium",
   subsets: ["latin"],
-  weight: ["300", "400", "600", "700", "900"],
+  weight: ["400", "600", "700"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -102,7 +104,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#e10600",
+  // Pantalla completa en iPhone: la barra de pestañas respeta las safe areas
+  viewportFit: "cover",
+  themeColor: "#0a0a0f",
   colorScheme: "dark",
 };
 

@@ -7,9 +7,11 @@ gratuitas, así que se despliega en Vercel sin servidor propio y sin coste.
   telemetría, posiciones, stints, resultados
 - **[Jolpica](https://github.com/jolpica/jolpica-f1)** (`api.jolpi.ca`) — mundiales de
   pilotos y constructores
+- **[MultiViewer](https://multiviewer.app)** (`api.multiviewer.app`) — curvas, rotación
+  y silueta de los circuitos
 
-El cliente está en [`lib/openf1.ts`](lib/openf1.ts), con cola de
-peticiones serializada y reintentos para respetar el rate limit de OpenF1.
+El cliente está en [`lib/openf1.ts`](lib/openf1.ts), con un limitador de peticiones
+(3 en paralelo) y reintentos para respetar el rate limit de OpenF1.
 
 ## Pasos
 
@@ -20,8 +22,6 @@ peticiones serializada y reintentos para respetar el rate limit de OpenF1.
 ## Limitaciones
 
 - **Datos desde 2023** (OpenF1 no tiene temporadas anteriores).
-- **Sin números de curva** en el mapa (OpenF1 no expone corners; el trazado se dibuja
-  igual desde la telemetría).
 - Telemetría a ~3.7 Hz.
 - Sesiones muy recientes pueden no tener datos de posición (el mapa muestra un aviso
   y el resto funciona).

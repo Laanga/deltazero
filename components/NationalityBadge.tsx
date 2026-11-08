@@ -13,7 +13,7 @@ export function NationalityBadge({
   return (
     <span
       title={nationality}
-      className={`inline-block shrink-0 rounded-sm border border-edge bg-white/5 px-1 py-px font-mono text-[9px] font-bold tracking-wider text-zinc-400 ${className}`}
+      className={`inline-block shrink-0 rounded-full bg-white/[0.07] px-1.5 py-px font-mono text-[9px] font-bold tracking-wider text-ink-2 ${className}`}
     >
       {code}
     </span>

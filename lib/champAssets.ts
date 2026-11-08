@@ -58,34 +58,54 @@ export const NATIONALITY_CODE: Record<string, string> = {
 
 // Mapeo de constructorId (Jolpica) → coche 2026 oficial en /public/cars/
 export const CAR_IMAGES: Record<string, string> = {
-  red_bull:     "/cars/2026-red_bull.webp",
-  mercedes:     "/cars/2026-mercedes.webp",
-  ferrari:      "/cars/2026-ferrari.webp",
-  mclaren:      "/cars/2026-mclaren.webp",
+  red_bull: "/cars/2026-red_bull.webp",
+  mercedes: "/cars/2026-mercedes.webp",
+  ferrari: "/cars/2026-ferrari.webp",
+  mclaren: "/cars/2026-mclaren.webp",
   aston_martin: "/cars/2026-aston_martin.webp",
-  alpine:       "/cars/2026-alpine.webp",
-  williams:     "/cars/2026-williams.webp",
-  rb:           "/cars/2026-rb.webp",
+  alpine: "/cars/2026-alpine.webp",
+  williams: "/cars/2026-williams.webp",
+  rb: "/cars/2026-rb.webp",
   racing_bulls: "/cars/2026-rb.webp",
-  haas:         "/cars/2026-haas.webp",
-  audi:         "/cars/2026-audi.webp",
-  cadillac:     "/cars/2026-cadillac.webp",
+  haas: "/cars/2026-haas.webp",
+  audi: "/cars/2026-audi.webp",
+  cadillac: "/cars/2026-cadillac.webp",
 };
 
 // Mapeo de constructorId (Jolpica) → ruta local en /public/teams/
 export const TEAM_LOGOS: Record<string, string> = {
-  red_bull:     "/teams/red-bull.png",
-  mercedes:     "/teams/mercedes.png",
-  ferrari:      "/teams/ferrari.png",
-  mclaren:      "/teams/mclaren.png",
+  red_bull: "/teams/red-bull.png",
+  mercedes: "/teams/mercedes.png",
+  ferrari: "/teams/ferrari.png",
+  mclaren: "/teams/mclaren.png",
   aston_martin: "/teams/aston-martin.png",
-  alpine:       "/teams/alpine.png",
-  williams:     "/teams/williams.png",
-  rb:           "/teams/visa-red.png",
+  alpine: "/teams/alpine.png",
+  williams: "/teams/williams.png",
+  rb: "/teams/visa-red.png",
   racing_bulls: "/teams/visa-red.png",
-  kick_sauber:  "/teams/kick.png",
-  sauber:       "/teams/kick.png",
-  haas:         "/teams/haas.png",
-  audi:         "/teams/audi.png",
-  cadillac:     "/teams/cadillac.png",
+  kick_sauber: "/teams/kick.png",
+  sauber: "/teams/kick.png",
+  haas: "/teams/haas.png",
+  audi: "/teams/audi.png",
+  cadillac: "/teams/cadillac.png",
 };
+
+// Colores de equipo (constructorId de Jolpica). Fuente única para ambos mundiales.
+export const TEAM_COLORS: Record<string, string> = {
+  red_bull: "#3671C6",
+  mercedes: "#27F4D2",
+  ferrari: "#E8002D",
+  mclaren: "#FF8000",
+  aston_martin: "#229971",
+  alpine: "#FF87BC",
+  williams: "#64C4FF",
+  rb: "#6692FF",
+  racing_bulls: "#6692FF",
+  kick_sauber: "#52E252",
+  sauber: "#52E252",
+  haas: "#B6BABD",
+};
+
+export function teamColor(id: string): string {
+  return TEAM_COLORS[id] ?? "#888888";
+}

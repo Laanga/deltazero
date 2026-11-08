@@ -1,83 +1,68 @@
 "use client";
 
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
-import { CalendarDays } from "lucide-react";
-import { useRef } from "react";
+import { CalendarDays, ChevronLeft } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
 import { LogoMark } from "@/components/LogoMark";
+import { Button } from "@/components/ui/Button";
 import { useEvents } from "@/hooks/useF1Data";
 import { useSessionStore } from "@/store/sessionStore";
 
-gsap.registerPlugin(useGSAP);
-
+/** Cabecera flotante en cápsula de cristal, fija arriba. */
 export function Header() {
-  const ref = useRef<HTMLElement>(null);
-  const { year, gp, session, tab, setTab } = useSessionStore();
+  const { year, gp, session, tab, setTab } = useSessionStore(
+    useShallow((s) => ({
+      year: s.year,
+      gp: s.gp,
+      session: s.session,
+      tab: s.tab,
+      setTab: s.setTab,
+    })),
+  );
   const { data: events } = useEvents();
   const event = events?.find((e) => e.name === gp);
   const inCalendar = tab === "calendar";
 
-  useGSAP(
-    () => {
-      gsap.from(".header-item", {
-        y: -24,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: "power3.out",
-        clearProps: "opacity,transform",
-      });
-    },
-    { scope: ref },
-  );
-
   return (
-    <header ref={ref} className="relative overflow-hidden border-b border-edge bg-panel/60 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1500px] items-center gap-6 px-6 py-4">
-        <div className="header-item flex items-center gap-3">
-          <LogoMark size={40} />
-          <div>
-            <h1 className="font-wide text-xl uppercase tracking-wider leading-none">
-              Delta<span className="text-f1red">Zero</span>
-            </h1>
-          </div>
+    <header className="sticky top-0 z-30 px-3 pt-3 md:px-6">
+      <div className="glass animate-rise mx-auto flex h-14 max-w-[1500px] items-center gap-3 rounded-full pl-3 pr-2 md:h-16 md:gap-4 md:pl-4">
+        <div className="flex items-center gap-2.5">
+          <LogoMark size={32} />
+          <h1 className="font-wide text-lg uppercase leading-none tracking-wider md:text-xl">
+            Delta<span className="text-f1red">Zero</span>
+          </h1>
         </div>
 
-        <div className="header-item ml-auto flex items-center gap-3 text-sm">
+        <div className="ml-auto flex min-w-0 items-center gap-2 pr-1 text-sm md:pr-0">
           {gp && !inCalendar && (
-            <>
-              <span className="rounded-md bg-panel-light border border-edge px-3 py-1.5 font-semibold">
+            <nav aria-label="Sesión actual" className="hidden min-w-0 items-center gap-1 sm:flex">
+              <span className="fill-control rounded-full px-3 py-1.5 font-semibold tabular-nums">
                 {year}
               </span>
-              <span className="text-zinc-600">/</span>
-              <span className="rounded-md bg-panel-light border border-edge px-3 py-1.5 font-semibold">
+              <span className="fill-control truncate rounded-full px-3 py-1.5 font-semibold">
                 {event?.country ?? gp}
               </span>
               {session && (
-                <>
-                  <span className="text-zinc-600">/</span>
-                  <span className="rounded-md bg-f1red/15 border border-f1red/40 px-3 py-1.5 font-bold text-red-400">
-                    {session}
-                  </span>
-                </>
+                <span className="rounded-full bg-f1red/15 px-3 py-1.5 font-bold text-red-300 shadow-[inset_0_0_0_1px_rgb(225_6_0/0.35)]">
+                  {session}
+                </span>
               )}
-            </>
+            </nav>
           )}
 
-          <button
-            onClick={() => setTab(inCalendar ? "telemetry" : "calendar")}
-            className={`ml-2 flex items-center gap-2 rounded-md border px-4 py-1.5 font-bold uppercase tracking-wide transition-colors
-              ${inCalendar
-                ? "border-f1red bg-f1red text-white"
-                : "border-edge bg-panel-light text-zinc-300 hover:border-f1red hover:text-white"}`}
-          >
-            <CalendarDays size={15} />
-            {inCalendar ? "Volver al análisis" : "Temporada"}
-          </button>
+          {/* En móvil la temporada está en la barra inferior */}
+          <div className="hidden md:block">
+            <Button
+              variant={inCalendar ? "primary" : "secondary"}
+              className="uppercase"
+              onClick={() => setTab(inCalendar ? "telemetry" : "calendar")}
+            >
+              {inCalendar ? <ChevronLeft size={16} /> : <CalendarDays size={15} />}
+              {inCalendar ? "Volver al análisis" : "Temporada"}
+            </Button>
+          </div>
         </div>
       </div>
-      <div className="absolute bottom-0 left-0 h-0.5 w-full bg-f1red" />
     </header>
   );
 }

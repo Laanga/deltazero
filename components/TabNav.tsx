@@ -1,60 +1,79 @@
 "use client";
 
-import { useGSAP } from "@gsap/react";
-import gsap from "gsap";
-import { Activity, Disc3, Flag, Timer } from "lucide-react";
-import { useRef } from "react";
+import { motion } from "framer-motion";
+import { Activity, CalendarDays, Disc3, Flag, Timer } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
 
+import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
 import { useSessionStore, type ViewTab } from "@/store/sessionStore";
 
-gsap.registerPlugin(useGSAP);
+type AnalysisTab = Exclude<ViewTab, "calendar">;
 
-const TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
-  { id: "telemetry", label: "Telemetría", icon: <Activity size={16} /> },
-  { id: "laps", label: "Vueltas", icon: <Timer size={16} /> },
-  { id: "race", label: "Carrera", icon: <Flag size={16} /> },
-  { id: "strategy", label: "Estrategia", icon: <Disc3 size={16} /> },
+const TABS: Segment<AnalysisTab>[] = [
+  { id: "telemetry", label: "Telemetría", icon: <Activity size={15} /> },
+  { id: "laps", label: "Vueltas", icon: <Timer size={15} /> },
+  { id: "race", label: "Carrera", icon: <Flag size={15} /> },
+  { id: "strategy", label: "Estrategia", icon: <Disc3 size={15} /> },
 ];
 
+/** Pestañas de análisis en escritorio (control segmentado). */
 export function TabNav() {
-  const ref = useRef<HTMLDivElement>(null);
-  const indicatorRef = useRef<HTMLDivElement>(null);
-  const { tab, setTab } = useSessionStore();
-
-  useGSAP(
-    () => {
-      const active = ref.current?.querySelector<HTMLButtonElement>(`[data-tab="${tab}"]`);
-      if (active && indicatorRef.current) {
-        gsap.to(indicatorRef.current, {
-          x: active.offsetLeft,
-          width: active.offsetWidth,
-          duration: 0.45,
-          ease: "elastic.out(1, 0.75)",
-        });
-      }
-    },
-    { dependencies: [tab], scope: ref },
-  );
-
+  const { tab, setTab } = useSessionStore(useShallow((s) => ({ tab: s.tab, setTab: s.setTab })));
+  if (tab === "calendar") return null;
+  // En móvil la navegación vive en la barra inferior
   return (
-    <div ref={ref} className="relative flex w-fit gap-1 rounded-md border border-edge bg-panel p-1">
-      <div
-        ref={indicatorRef}
-        className="absolute top-1 bottom-1 left-0 rounded bg-f1red/90 shadow-lg shadow-f1red/30"
-        style={{ width: 0 }}
+    <div className="hidden md:block">
+      <SegmentedControl
+        ariaLabel="Vistas de análisis"
+        segments={TABS}
+        value={tab}
+        onChange={setTab}
       />
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          data-tab={t.id}
-          onClick={() => setTab(t.id)}
-          className={`relative z-10 flex items-center gap-2 rounded px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors duration-300
-            ${tab === t.id ? "text-white" : "text-zinc-500 hover:text-zinc-200"}`}
-        >
-          {t.icon}
-          {t.label}
-        </button>
-      ))}
     </div>
+  );
+}
+
+const MOBILE_TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
+  { id: "telemetry", label: "Telemetría", icon: <Activity size={20} /> },
+  { id: "laps", label: "Vueltas", icon: <Timer size={20} /> },
+  { id: "race", label: "Carrera", icon: <Flag size={20} /> },
+  { id: "strategy", label: "Estrategia", icon: <Disc3 size={20} /> },
+  { id: "calendar", label: "Temporada", icon: <CalendarDays size={20} /> },
+];
+
+/** Barra de pestañas flotante inferior (móvil), estilo iOS. */
+export function MobileTabBar() {
+  const { tab, setTab } = useSessionStore(useShallow((s) => ({ tab: s.tab, setTab: s.setTab })));
+  return (
+    <nav
+      aria-label="Navegación principal"
+      className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 md:hidden"
+    >
+      <div className="glass mx-auto flex max-w-md items-stretch justify-between rounded-full p-1.5">
+        {MOBILE_TABS.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => setTab(t.id)}
+              className={`pressable relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-full py-1.5 text-[9.5px] font-bold tracking-wide
+                ${active ? "text-white" : "text-ink-3"}`}
+            >
+              {active && (
+                <motion.span
+                  layoutId="mobile-tab"
+                  className="absolute inset-0 rounded-full bg-white/[0.12]"
+                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                />
+              )}
+              <span className={`relative ${active ? "text-f1red-bright" : ""}`}>{t.icon}</span>
+              <span className="relative truncate">{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

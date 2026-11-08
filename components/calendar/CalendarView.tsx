@@ -1,75 +1,40 @@
 "use client";
 
-import { useGSAP } from "@gsap/react";
 import { AnimatePresence, motion } from "framer-motion";
-import gsap from "gsap";
 import { CalendarDays, CheckCircle2, ChevronDown, Flag, MapPin, Trophy, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ChartSkeleton, EmptyState } from "@/components/ChartPanel";
 import { ConstructorsChampionship } from "@/components/championship/ConstructorsChampionship";
 import { DriversChampionship } from "@/components/championship/DriversChampionship";
 import { MiniTrack } from "@/components/calendar/MiniTrack";
-import {
-  SessionResultsModal,
-  type ResultsTarget,
-} from "@/components/calendar/SessionResultsModal";
+import { SessionResultsModal, type ResultsTarget } from "@/components/calendar/SessionResultsModal";
 import { useEvents } from "@/hooks/useF1Data";
 import { useTimeZone, tzShortLabel } from "@/hooks/useTimeZone";
 import type { EventInfo, SessionInfo } from "@/lib/types";
+import { Badge } from "@/components/ui/Chip";
+import { SegmentedControl, type Segment } from "@/components/ui/SegmentedControl";
 import { useSessionStore } from "@/store/sessionStore";
 
 type CalSubTab = "races" | "drivers" | "constructors";
 
-const SUB_TABS: { id: CalSubTab; label: string; icon: React.ReactNode }[] = [
+const SUB_TABS: Segment<CalSubTab>[] = [
   { id: "races", label: "Calendario", icon: <CalendarDays size={15} /> },
   { id: "drivers", label: "Pilotos", icon: <Users size={15} /> },
   { id: "constructors", label: "Constructores", icon: <Trophy size={15} /> },
 ];
 
 function CalSubNav({ active, onChange }: { active: CalSubTab; onChange: (t: CalSubTab) => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const indicatorRef = useRef<HTMLDivElement>(null);
-
-  useGSAP(
-    () => {
-      const btn = ref.current?.querySelector<HTMLButtonElement>(`[data-subtab="${active}"]`);
-      if (btn && indicatorRef.current) {
-        gsap.to(indicatorRef.current, {
-          x: btn.offsetLeft,
-          width: btn.offsetWidth,
-          duration: 0.4,
-          ease: "elastic.out(1, 0.75)",
-        });
-      }
-    },
-    { dependencies: [active], scope: ref },
-  );
-
   return (
-    <div ref={ref} className="relative flex w-fit gap-1 rounded-md border border-edge bg-panel p-1">
-      <div
-        ref={indicatorRef}
-        className="absolute top-1 bottom-1 left-0 rounded bg-f1red/90 shadow-lg shadow-f1red/30"
-        style={{ width: 0 }}
-      />
-      {SUB_TABS.map((t) => (
-        <button
-          key={t.id}
-          data-subtab={t.id}
-          onClick={() => onChange(t.id)}
-          className={`relative z-10 flex items-center gap-2 rounded px-4 py-2 text-sm font-bold uppercase tracking-wide transition-colors duration-300
-            ${active === t.id ? "text-white" : "text-zinc-500 hover:text-zinc-200"}`}
-        >
-          {t.icon}
-          {t.label}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      ariaLabel="Secciones de la temporada"
+      segments={SUB_TABS}
+      value={active}
+      onChange={onChange}
+      className="max-md:w-full max-md:[&>button]:flex-1 max-md:[&>button]:justify-center max-md:[&>button]:px-2 max-md:[&_svg]:hidden"
+    />
   );
 }
-
-gsap.registerPlugin(useGSAP);
 
 const SESSION_LABELS: Record<string, string> = {
   FP1: "Libres 1",
@@ -141,16 +106,16 @@ function Countdown({ target }: { target: Date }) {
   ];
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2 md:gap-3" role="timer" aria-label="Cuenta atrás para la carrera">
       {cells.map((c) => (
         <div
           key={c.label}
-          className="flex w-18 flex-col items-center rounded-md border border-f1red/30 bg-black/40 px-3 py-2 backdrop-blur"
+          className="glass flex w-16 flex-col items-center rounded-[20px] px-2 py-2.5 md:w-19"
         >
-          <span className="font-mono text-3xl font-black tabular-nums">
+          <span className="font-mono text-2xl font-black tabular-nums md:text-3xl">
             {String(c.value).padStart(2, "0")}
           </span>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{c.label}</span>
+          <span className="text-[10px] uppercase tracking-[0.2em] text-ink-3">{c.label}</span>
         </div>
       ))}
     </div>
@@ -167,9 +132,9 @@ function SessionRow({
   const tz = useTimeZone();
   return (
     <div className="flex items-center gap-2.5 py-1.5 text-sm">
-      <span className="min-w-0 flex-1 truncate font-bold text-zinc-300">
+      <span className="min-w-0 flex-1 truncate font-bold text-ink">
         {SESSION_LABELS[session.code] ?? session.name}
-        <span className="ml-2 text-xs font-normal text-zinc-600">{localDay(session.date, tz)}</span>
+        <span className="ml-2 text-xs font-normal text-ink-3">{localDay(session.date, tz)}</span>
       </span>
       {onShowResults && (
         <button
@@ -177,24 +142,22 @@ function SessionRow({
             e.stopPropagation();
             onShowResults();
           }}
-          className="shrink-0 rounded border border-edge px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-f1red hover:text-white"
+          className="pressable shrink-0 rounded-full bg-f1red/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-300 hover:bg-f1red/30 hover:text-white"
         >
           Resultados
         </button>
       )}
       <span
-        className="flex shrink-0 items-center gap-1 whitespace-nowrap font-mono text-xs text-zinc-500"
+        className="hidden shrink-0 items-center gap-1 whitespace-nowrap font-mono text-xs text-ink-3 sm:flex"
         title="Hora local del circuito"
       >
         <Flag size={11} /> {circuitTime(session.date_local)}
       </span>
       <span
-        className="flex shrink-0 items-center gap-1 whitespace-nowrap font-mono font-bold text-zinc-200"
+        className="flex shrink-0 items-center gap-1 whitespace-nowrap font-mono font-bold text-ink"
         title={`Tu hora local (${tz})`}
       >
-        <span className="rounded-sm border border-edge bg-white/5 px-1 py-px text-[9px] font-bold tracking-wider text-zinc-500">
-          {tzShortLabel(tz, utcDate(session.date) ?? new Date(0))}
-        </span>
+        <Badge>{tzShortLabel(tz, utcDate(session.date) ?? new Date(0))}</Badge>
         {localTime(session.date, tz)}
       </span>
     </div>
@@ -203,6 +166,8 @@ function SessionRow({
 
 function RaceCard({
   ev,
+  now,
+  index,
   status,
   expanded,
   onToggle,
@@ -213,13 +178,16 @@ function RaceCard({
   expanded: boolean;
   onToggle: () => void;
   onShowResults: (session: SessionInfo) => void;
+  index: number;
+  now: number;
 }) {
   const tz = useTimeZone();
   return (
     <div
-      className={`race-card panel panel-glow group relative cursor-pointer overflow-hidden transition-opacity
-        ${status === "past" ? "opacity-50 hover:opacity-90" : ""}
-        ${status === "next" ? "border-f1red/60 shadow-lg shadow-f1red/15" : ""}`}
+      style={{ "--i": index } as React.CSSProperties}
+      className={`stagger panel panel-glow group relative cursor-pointer overflow-hidden
+        ${status === "past" ? "opacity-55 hover:opacity-95" : ""}
+        ${status === "next" ? "!border-f1red/50 shadow-[0_0_0_1px_rgb(225_6_0/0.25),0_20px_50px_-20px_rgb(225_6_0/0.5)]" : ""}`}
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
@@ -242,19 +210,17 @@ function RaceCard({
 
       <div className="relative p-5 pr-26">
         <div className="mb-1 flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-zinc-500">
-            Ronda {ev.round}
-          </span>
+          <span className="eyebrow">Ronda {ev.round}</span>
           {status === "next" && (
-            <span className="animate-pulse rounded bg-f1red px-2 py-0.5 text-[10px] font-black uppercase tracking-wider">
+            <span className="rounded-full bg-f1red px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider shadow-[0_0_16px_rgb(225_6_0/0.6)]">
               Próxima
             </span>
           )}
-          {status === "past" && <CheckCircle2 size={14} className="text-zinc-600" />}
+          {status === "past" && <CheckCircle2 size={14} className="text-ink-3" />}
         </div>
 
-        <h3 className="text-lg font-black uppercase italic leading-tight">{ev.name}</h3>
-        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+        <h3 className="text-lg font-black uppercase leading-tight">{ev.name}</h3>
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-3">
           <MapPin size={12} />
           {ev.location}, {ev.country}
           <span className="ml-auto font-mono">{eventDateRange(ev, tz)}</span>
@@ -262,13 +228,13 @@ function RaceCard({
 
         <div className="mt-2 flex items-center justify-between">
           {ev.format !== "conventional" && (
-            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
               Sprint
             </span>
           )}
           <ChevronDown
             size={16}
-            className={`ml-auto text-zinc-600 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}
+            className={`ml-auto text-ink-3 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`}
           />
         </div>
       </div>
@@ -281,12 +247,12 @@ function RaceCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ type: "spring", stiffness: 420, damping: 40 }}
             className="overflow-hidden"
           >
-            <div className="mx-5 mb-4 divide-y divide-edge/60 border-t border-edge pt-2">
+            <div className="mx-3 mb-3 divide-y divide-white/[0.06] rounded-[20px] bg-white/[0.035] px-3 py-1">
               {ev.sessions.map((s) => {
-                const past = utcDate(s.date) != null && utcDate(s.date)!.getTime() < Date.now();
+                const past = (utcDate(s.date)?.getTime() ?? Infinity) < now;
                 return (
                   <SessionRow
                     key={s.code}
@@ -304,41 +270,18 @@ function RaceCard({
 }
 
 export function CalendarView() {
-  const { year } = useSessionStore();
+  const year = useSessionStore((s) => s.year);
   const tz = useTimeZone();
   const { data: events, isLoading } = useEvents();
-  const ref = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [resultsTarget, setResultsTarget] = useState<ResultsTarget | null>(null);
   const [calSubTab, setCalSubTab] = useState<CalSubTab>("races");
+  // Instante de referencia fijado al montar (render puro; la cuenta atrás lleva su propio reloj)
+  const [now] = useState(() => Date.now());
 
   const nextRace = useMemo(
-    () => events?.find((ev) => (raceDate(ev)?.getTime() ?? 0) > Date.now()) ?? null,
-    [events],
-  );
-
-  useGSAP(
-    () => {
-      if (events?.length) {
-        gsap.from(".race-card", {
-          opacity: 0,
-          y: 30,
-          scale: 0.96,
-          duration: 0.55,
-          stagger: 0.04,
-          ease: "power3.out",
-          clearProps: "opacity,transform",
-        });
-        gsap.from(".calendar-hero", {
-          opacity: 0,
-          y: -20,
-          duration: 0.7,
-          ease: "power3.out",
-          clearProps: "opacity,transform",
-        });
-      }
-    },
-    { dependencies: [events], scope: ref },
+    () => events?.find((ev) => (raceDate(ev)?.getTime() ?? 0) > now) ?? null,
+    [events, now],
   );
 
   if (calSubTab === "drivers") {
@@ -378,24 +321,27 @@ export function CalendarView() {
   const nextRaceDate = nextRace ? raceDate(nextRace) : null;
 
   return (
-    <div ref={ref} className="space-y-6">
+    <div className="space-y-6">
       <CalSubNav active={calSubTab} onChange={setCalSubTab} />
       {nextRace && nextRaceDate ? (
-        <div className="calendar-hero panel relative overflow-hidden p-8">
-          {/* Acento de marca: barra roja sólida a la izquierda */}
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-1.5 bg-f1red" />
+        <div className="panel animate-rise relative overflow-hidden p-6 md:p-8">
+          {/* Halo de marca */}
+          <div
+            className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full"
+            style={{ background: "radial-gradient(circle, rgb(225 6 0 / 0.25), transparent 65%)" }}
+          />
           <div className="relative flex flex-wrap items-center justify-between gap-6">
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-red-400">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.3em] text-f1red-bright">
                 Próximo Gran Premio · Ronda {nextRace.round}
               </p>
-              <h2 className="font-wide text-4xl uppercase leading-none">
+              <h2 className="font-wide text-3xl uppercase leading-none md:text-4xl">
                 {nextRace.name}
               </h2>
-              <p className="mt-2 flex items-center gap-1.5 text-sm text-zinc-400">
+              <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-ink-2">
                 <MapPin size={14} />
                 {nextRace.location}, {nextRace.country}
-                <span className="ml-3 font-mono text-zinc-500">
+                <span className="font-mono text-ink-3 md:ml-3">
                   Carrera:{" "}
                   {nextRaceDate.toLocaleString("es-ES", {
                     weekday: "long",
@@ -410,13 +356,17 @@ export function CalendarView() {
               </p>
             </div>
             <div className="flex items-center gap-8">
-              <MiniTrack location={nextRace.location} size={130} className="hidden opacity-80 md:block" />
+              <MiniTrack
+                location={nextRace.location}
+                size={130}
+                className="hidden opacity-80 md:block"
+              />
               <Countdown target={nextRaceDate} />
             </div>
           </div>
         </div>
       ) : (
-        <div className="calendar-hero panel p-6 text-center text-sm text-zinc-500">
+        <div className="panel p-6 text-center text-sm text-ink-3">
           Temporada {year} finalizada — selecciona otra temporada para ver su calendario.
         </div>
       )}
@@ -425,10 +375,12 @@ export function CalendarView() {
         {events.map((ev) => {
           const rd = raceDate(ev)?.getTime() ?? 0;
           const status: "past" | "next" | "future" =
-            ev.round === nextRace?.round ? "next" : rd < Date.now() ? "past" : "future";
+            ev.round === nextRace?.round ? "next" : rd < now ? "past" : "future";
           return (
             <RaceCard
               key={ev.round}
+              index={ev.round}
+              now={now}
               ev={ev}
               status={status}
               expanded={expanded === ev.round}

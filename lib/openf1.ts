@@ -24,33 +24,79 @@ import type {
   TelemetryData,
   TrackEvent,
 } from "./types";
+import {
+  formatRaceDuration,
+  groupBy,
+  integrateDistance,
+  interp,
+  parseRaceControl,
+  raceProgress,
+  round1,
+  round3,
+  toLocalStr,
+  toUtcStr,
+} from "./f1math";
 
 const OF1 = "https://api.openf1.org/v1";
 const JOLPICA = "https://api.jolpi.ca/ergast/f1";
+const MULTIVIEWER = "https://api.multiviewer.app/api/v1";
 
 // Paso de resampleo de telemetría: un punto cada 5 m
 const STEP_METERS = 5;
 
 /* ------------------------------------------------------------------ */
-/* Cola de peticiones: OpenF1 limita el ritmo, serializamos con retry  */
+/* Limitador de peticiones                                             */
 /* ------------------------------------------------------------------ */
+// OpenF1 limita el ritmo (~3 req/s). Antes las peticiones iban en fila india
+// con 250 ms de espera entre cada una; ahora salen hasta MAX_CONCURRENT en
+// paralelo respetando un intervalo mínimo entre arranques, y un 429 pausa la
+// cola entera (no solo la petición que lo recibió).
 
-let queueTail: Promise<unknown> = Promise.resolve();
-const GAP_MS = 250;
+const MAX_CONCURRENT = 3;
+const MIN_INTERVAL_MS = 340;
 
-const inflight = new Map<string, Promise<unknown>>();
+let active = 0;
+let lastStart = 0;
+let pausedUntil = 0;
+const waiters: (() => void)[] = [];
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function acquire(): Promise<void> {
+  for (;;) {
+    const now = Date.now();
+    const wait = Math.max(lastStart + MIN_INTERVAL_MS, pausedUntil) - now;
+    if (active < MAX_CONCURRENT && wait <= 0) {
+      active++;
+      lastStart = now;
+      return;
+    }
+    if (active >= MAX_CONCURRENT) await new Promise<void>((r) => waiters.push(r));
+    else await sleep(wait);
+  }
+}
+
+function release() {
+  active--;
+  waiters.shift()?.();
+}
+
 async function rawFetch(url: string): Promise<unknown> {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await fetch(url);
+    await acquire();
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } finally {
+      release();
+    }
     if (res.status === 429) {
-      // Backoff con tope + jitter para no sincronizar reintentos (thundering herd)
-      const backoff = Math.min(1000 * 2 ** attempt, 8000);
-      await sleep(backoff + Math.floor(Math.random() * 400));
+      // Backoff con tope + jitter; pausa global para no seguir golpeando la API
+      const backoff = Math.min(1000 * 2 ** attempt, 8000) + Math.floor(Math.random() * 400);
+      pausedUntil = Math.max(pausedUntil, Date.now() + backoff);
+      await sleep(backoff);
       continue;
     }
     // OpenF1 responde 404 {"detail": "No results found."} para conjuntos vacíos
@@ -61,7 +107,9 @@ async function rawFetch(url: string): Promise<unknown> {
   throw new Error(`OpenF1: rate limit persistente en ${url}`);
 }
 
-/** GET serializado + dedupe de peticiones idénticas en vuelo. */
+const inflight = new Map<string, Promise<unknown>>();
+
+/** GET limitado + dedupe de peticiones idénticas en vuelo. */
 function of1<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) qs.append(k, String(v));
@@ -70,22 +118,17 @@ function of1<T>(path: string, params: Record<string, string | number> = {}): Pro
   const existing = inflight.get(url);
   if (existing) return existing as Promise<T>;
 
-  const p = (queueTail = queueTail
-    .catch(() => undefined)
-    .then(async () => {
-      const data = await rawFetch(url);
-      await sleep(GAP_MS);
-      // OpenF1 devuelve {"detail": "..."} cuando no hay datos
-      if (data && !Array.isArray(data)) return [];
-      return data;
-    })) as Promise<T>;
+  const p = rawFetch(url).then((data) =>
+    // OpenF1 devuelve {"detail": "..."} cuando no hay datos
+    data && !Array.isArray(data) ? [] : data,
+  ) as Promise<T>;
 
   inflight.set(url, p);
   // then(fn, fn) en rama aparte: .finally() sobre p crearía una promesa
   // derivada cuyo rechazo nadie maneja (unhandled rejection en cada fallo)
   p.then(
     () => inflight.delete(url),
-    () => inflight.delete(url)
+    () => inflight.delete(url),
   );
   return p;
 }
@@ -103,6 +146,7 @@ interface Of1Meeting {
   gmt_offset: string;
   date_start: string;
   year: number;
+  circuit_key?: number;
 }
 
 interface Of1Session {
@@ -189,27 +233,6 @@ interface Of1Grid {
 }
 
 /* ------------------------------------------------------------------ */
-/* Helpers de fechas                                                   */
-/* ------------------------------------------------------------------ */
-
-/** ISO de OpenF1 → "YYYY-MM-DD HH:MM:SS" en UTC. */
-function toUtcStr(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 19).replace("T", " ");
-}
-
-/** Suma el gmt_offset ("02:00:00" / "-04:00:00") y formatea con sufijo de offset. */
-function toLocalStr(iso: string, gmtOffset: string): string {
-  const sign = gmtOffset.startsWith("-") ? -1 : 1;
-  const [h, m] = gmtOffset.replace("-", "").split(":").map(Number);
-  const offsetMs = sign * (h * 3600 + m * 60) * 1000;
-  const local = new Date(new Date(iso).getTime() + offsetMs);
-  const base = local.toISOString().slice(0, 19).replace("T", " ");
-  const hh = String(h).padStart(2, "0");
-  const mm = String(m).padStart(2, "0");
-  return `${base}${sign < 0 ? "-" : "+"}${hh}:${mm}`;
-}
-
-/* ------------------------------------------------------------------ */
 /* Resolución de meetings y sesiones (con caché)                       */
 /* ------------------------------------------------------------------ */
 
@@ -252,12 +275,7 @@ function loadYear(year: number): Promise<YearData> {
       of1<Of1Meeting[]>("meetings", { year }),
       of1<Of1Session[]>("sessions", { year }),
     ]);
-    const sessionsByMeeting = new Map<number, Of1Session[]>();
-    for (const s of sessions) {
-      const list = sessionsByMeeting.get(s.meeting_key) ?? [];
-      list.push(s);
-      sessionsByMeeting.set(s.meeting_key, list);
-    }
+    const sessionsByMeeting = groupBy(sessions, (s) => s.meeting_key);
     // Solo meetings con carrera (excluye pretemporada/testing)
     const raceMeetings = meetings
       .filter((m) =>
@@ -298,11 +316,15 @@ function getDrivers(sessionKey: number): Promise<Of1Driver[]> {
 }
 
 function getAllLaps(sessionKey: number): Promise<Of1Lap[]> {
-  return memoPromise(lapsCache, sessionKey, () => of1<Of1Lap[]>("laps", { session_key: sessionKey }));
+  return memoPromise(lapsCache, sessionKey, () =>
+    of1<Of1Lap[]>("laps", { session_key: sessionKey }),
+  );
 }
 
 function getStints(sessionKey: number): Promise<Of1Stint[]> {
-  return memoPromise(stintsCache, sessionKey, () => of1<Of1Stint[]>("stints", { session_key: sessionKey }));
+  return memoPromise(stintsCache, sessionKey, () =>
+    of1<Of1Stint[]>("stints", { session_key: sessionKey }),
+  );
 }
 
 async function acronymMaps(sessionKey: number) {
@@ -316,64 +338,42 @@ async function acronymMaps(sessionKey: number) {
   return { drivers, byNumber, byAcronym };
 }
 
-/* ------------------------------------------------------------------ */
-/* Tiempos de fin de vuelta (base de posiciones y gaps)                */
-/* ------------------------------------------------------------------ */
-
-/**
- * Para cada piloto, instante absoluto (ms) en que termina cada vuelta.
- * Fin de la vuelta N = date_start de la vuelta N+1 (robusto ante
- * lap_duration nulos, como la vuelta 1 con salida parada).
- */
-function lapEndTimes(laps: Of1Lap[]): Map<number, Map<number, number>> {
-  const byDriver = new Map<number, Of1Lap[]>();
-  for (const l of laps) {
-    const list = byDriver.get(l.driver_number) ?? [];
-    list.push(l);
-    byDriver.set(l.driver_number, list);
-  }
-  const out = new Map<number, Map<number, number>>();
-  for (const [num, list] of byDriver) {
-    list.sort((a, b) => a.lap_number - b.lap_number);
-    const ends = new Map<number, number>();
-    for (let i = 0; i < list.length; i++) {
-      const next = list[i + 1];
-      if (next?.date_start) {
-        ends.set(list[i].lap_number, new Date(next.date_start).getTime());
-      } else if (list[i].date_start && list[i].lap_duration != null) {
-        ends.set(
-          list[i].lap_number,
-          new Date(list[i].date_start!).getTime() + list[i].lap_duration! * 1000,
-        );
-      }
-    }
-    out.set(num, ends);
-  }
-  return out;
+/** Stints indexados por piloto: evita recorrer todos los stints por cada vuelta. */
+function stintFinder(stints: Of1Stint[]) {
+  const byDriver = groupBy(stints, (s) => s.driver_number);
+  return (num: number, lap: number) =>
+    byDriver.get(num)?.find((s) => lap >= s.lap_start && lap <= s.lap_end);
 }
 
-/* ------------------------------------------------------------------ */
-/* Interpolación lineal (equivalente a np.interp)                      */
-/* ------------------------------------------------------------------ */
+/** Posiciones y gaps de carrera calculados una vez por sesión (los usan dos vistas). */
+const progressCache = new Map<number, Promise<ReturnType<typeof raceProgress>>>();
 
-function interp(grid: number[], x: number[], y: number[]): number[] {
-  const out = new Array<number>(grid.length);
-  let j = 0;
-  for (let i = 0; i < grid.length; i++) {
-    const g = grid[i];
-    if (g <= x[0]) {
-      out[i] = y[0];
-      continue;
-    }
-    if (g >= x[x.length - 1]) {
-      out[i] = y[y.length - 1];
-      continue;
-    }
-    while (x[j + 1] < g) j++;
-    const t = (g - x[j]) / (x[j + 1] - x[j]);
-    out[i] = y[j] + t * (y[j + 1] - y[j]);
-  }
-  return out;
+function getRaceProgress(sessionKey: number) {
+  return memoPromise(progressCache, sessionKey, async () => {
+    const [{ byNumber }, allLaps] = await Promise.all([
+      acronymMaps(sessionKey),
+      getAllLaps(sessionKey),
+    ]);
+    return raceProgress(allLaps, (num) => byNumber.get(num)?.name_acronym);
+  });
+}
+
+function resultStatus(r: Of1SessionResult): string {
+  return r.dsq ? "Disqualified" : r.dns ? "Did not start" : r.dnf ? "Retired" : "Finished";
+}
+
+interface MvPoint {
+  number: number;
+  letter?: string;
+  angle: number;
+  trackPosition: { x: number; y: number };
+}
+interface MvCircuit {
+  rotation: number;
+  x: number[];
+  y: number[];
+  corners?: MvPoint[];
+  marshalSectors?: MvPoint[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -447,42 +447,40 @@ export const openf1Api = {
     const withValidLap = new Set(
       allLaps.filter((l) => l.date_start && l.lap_duration != null).map((l) => l.driver_number),
     );
-    return drivers.filter((d) => withValidLap.has(d.driver_number)).map((d) => ({
-      number: String(d.driver_number),
-      abbreviation: d.name_acronym,
-      full_name: d.full_name,
-      team: d.team_name ?? "",
-      team_color: d.team_colour ? `#${d.team_colour}` : "#888888",
-      headshot_url: d.headshot_url || null,
-    }));
+    return drivers
+      .filter((d) => withValidLap.has(d.driver_number))
+      .map((d) => ({
+        number: String(d.driver_number),
+        abbreviation: d.name_acronym,
+        full_name: d.full_name,
+        team: d.team_name ?? "",
+        team_color: d.team_colour ? `#${d.team_colour}` : "#888888",
+        headshot_url: d.headshot_url || null,
+      }));
   },
 
-  async laps(year: number, gp: string, session: string, drivers: string[]): Promise<LapData[]> {
+  /** Todas las vueltas de la sesión (todos los pilotos): las vistas filtran en cliente. */
+  async laps(year: number, gp: string, session: string): Promise<LapData[]> {
     const ses = await resolveSession(year, gp, session);
-    const [{ byAcronym }, allLaps, stints, pits] = await Promise.all([
+    const [{ byNumber }, allLaps, stints, pits] = await Promise.all([
       acronymMaps(ses.session_key),
       getAllLaps(ses.session_key),
       getStints(ses.session_key),
       of1<Of1Pit[]>("pit", { session_key: ses.session_key }),
     ]);
 
-    const wanted = new Map<number, string>();
-    for (const a of drivers) {
-      const d = byAcronym.get(a);
-      if (d) wanted.set(d.driver_number, a);
-    }
-
     const pitLaps = new Set(pits.map((p) => `${p.driver_number}:${p.lap_number}`));
-    const stintOf = (num: number, lap: number) =>
-      stints.find((s) => s.driver_number === num && lap >= s.lap_start && lap <= s.lap_end);
+    const stintOf = stintFinder(stints);
 
     const bestSoFar = new Map<number, number>();
     const out: LapData[] = [];
-    const sorted = allLaps
-      .filter((l) => wanted.has(l.driver_number))
-      .sort((a, b) => a.driver_number - b.driver_number || a.lap_number - b.lap_number);
+    const sorted = [...allLaps].sort(
+      (a, b) => a.driver_number - b.driver_number || a.lap_number - b.lap_number,
+    );
 
     for (const l of sorted) {
+      const acr = byNumber.get(l.driver_number)?.name_acronym;
+      if (!acr) continue;
       const stint = stintOf(l.driver_number, l.lap_number);
       let isPb = false;
       if (l.lap_duration != null) {
@@ -493,7 +491,7 @@ export const openf1Api = {
         }
       }
       out.push({
-        driver: wanted.get(l.driver_number)!,
+        driver: acr,
         lap_number: l.lap_number,
         lap_time: l.lap_duration,
         sector_1: l.duration_sector_1,
@@ -515,13 +513,17 @@ export const openf1Api = {
     return out;
   },
 
+  /**
+   * Telemetría de UNA vuelta de UN piloto, resampleada cada STEP_METERS.
+   * Una query por piloto: añadir un piloto a la comparación solo descarga el suyo.
+   */
   async telemetry(
     year: number,
     gp: string,
     session: string,
-    drivers: string[],
+    acronym: string,
     lap: string,
-  ): Promise<TelemetryData[]> {
+  ): Promise<TelemetryData> {
     const ses = await resolveSession(year, gp, session);
     const [{ byAcronym }, allLaps, stints] = await Promise.all([
       acronymMaps(ses.session_key),
@@ -529,235 +531,145 @@ export const openf1Api = {
       getStints(ses.session_key),
     ]);
 
-    // Índice de vueltas por piloto: evita recorrer todas las vueltas por cada piloto
-    const lapsByNum = new Map<number, Of1Lap[]>();
-    for (const l of allLaps) {
-      const arr = lapsByNum.get(l.driver_number);
-      if (arr) arr.push(l);
-      else lapsByNum.set(l.driver_number, [l]);
+    const d = byAcronym.get(acronym);
+    if (!d) throw new Error(`Piloto ${acronym} no encontrado (OpenF1)`);
+    const mine = allLaps.filter(
+      (l) => l.driver_number === d.driver_number && l.date_start && l.lap_duration != null,
+    );
+
+    let chosen: Of1Lap | undefined;
+    if (lap === "fastest") {
+      chosen = mine.reduce<Of1Lap | undefined>(
+        (best, l) => (!best || l.lap_duration! < best.lap_duration! ? l : best),
+        undefined,
+      );
+      if (!chosen) throw new Error(`${acronym} no tiene vuelta rápida válida`);
+    } else {
+      chosen = mine.find((l) => l.lap_number === Number(lap));
+      if (!chosen) throw new Error(`${acronym} no tiene vuelta ${lap}`);
     }
 
-    const buildDriver = async (acronym: string): Promise<TelemetryData> => {
-      const d = byAcronym.get(acronym);
-      if (!d) throw new Error(`Piloto ${acronym} no encontrado (OpenF1)`);
-      const mine = (lapsByNum.get(d.driver_number) ?? []).filter(
-        (l) => l.date_start && l.lap_duration != null,
-      );
-
-      let chosen: Of1Lap | undefined;
-      if (lap === "fastest") {
-        chosen = mine.reduce<Of1Lap | undefined>(
-          (best, l) => (!best || l.lap_duration! < best.lap_duration! ? l : best),
-          undefined,
-        );
-        if (!chosen) throw new Error(`${acronym} no tiene vuelta rápida válida`);
-      } else {
-        chosen = mine.find((l) => l.lap_number === Number(lap));
-        if (!chosen) throw new Error(`${acronym} no tiene vuelta ${lap}`);
-      }
-
-      const t0 = new Date(chosen.date_start!).getTime();
-      const t1 = t0 + chosen.lap_duration! * 1000;
-      // La clave "date>" serializa como `date%3E=valor` → la API lo lee `date>=valor`
-      const dateParams = {
-        session_key: ses.session_key,
-        driver_number: d.driver_number,
-        "date>": new Date(t0).toISOString().replace("Z", ""),
-        "date<": new Date(t1).toISOString().replace("Z", ""),
-      };
-
-      const car = await of1<Of1CarData[]>("car_data", dateParams);
-      if (car.length < 2) throw new Error(`Sin telemetría para ${acronym} (OpenF1)`);
-      car.sort((a, b) => a.date.localeCompare(b.date));
-
-      // Distancia integrada por trapecios a partir de la velocidad
-      const times = car.map((c) => (new Date(c.date).getTime() - t0) / 1000);
-      const dist = new Array<number>(car.length).fill(0);
-      for (let i = 1; i < car.length; i++) {
-        const dt = times[i] - times[i - 1];
-        dist[i] = dist[i - 1] + (((car[i].speed + car[i - 1].speed) / 2) * dt) / 3.6;
-      }
-
-      const maxDist = dist[dist.length - 1];
-      const grid: number[] = [];
-      for (let g = 0; g < maxDist; g += STEP_METERS) grid.push(g);
-
-      const speed = interp(grid, dist, car.map((c) => c.speed));
-      const rpm = interp(grid, dist, car.map((c) => c.rpm));
-      const throttle = interp(grid, dist, car.map((c) => Math.min(c.throttle, 100)));
-      // OpenF1 da freno 0-100; el chart espera 0/1 como FastF1
-      const brake = interp(grid, dist, car.map((c) => (c.brake > 50 ? 1 : 0)));
-      const gear = interp(grid, dist, car.map((c) => c.n_gear));
-      const drs = interp(
-        grid,
-        dist,
-        car.map((c) => (c.drs != null && [10, 12, 14].includes(c.drs) ? 1 : 0)),
-      );
-      const timeChan = interp(grid, dist, times);
-
-      // Posición en pista (puede no existir en sesiones muy recientes)
-      let track: { x: number[]; y: number[] } | null = null;
-      try {
-        const loc = await of1<Of1Location[]>("location", dateParams);
-        if (loc.length >= 2) {
-          loc.sort((a, b) => a.date.localeCompare(b.date));
-          const locTimes = loc.map((p) => (new Date(p.date).getTime() - t0) / 1000);
-          const locDist = interp(locTimes, times, dist);
-          track = {
-            x: interp(grid, locDist, loc.map((p) => p.x)).map((v) => Math.round(v * 10) / 10),
-            y: interp(grid, locDist, loc.map((p) => p.y)).map((v) => Math.round(v * 10) / 10),
-          };
-        }
-      } catch {
-        track = null;
-      }
-
-      const stint = stints.find(
-        (s) =>
-          s.driver_number === d.driver_number &&
-          chosen!.lap_number >= s.lap_start &&
-          chosen!.lap_number <= s.lap_end,
-      );
-
-      return {
-        driver: acronym,
-        lap_number: chosen.lap_number,
-        lap_time: chosen.lap_duration,
-        compound: stint?.compound ?? null,
-        sectors: {
-          s1: chosen.duration_sector_1 ?? null,
-          s2: chosen.duration_sector_2 ?? null,
-          s3: chosen.duration_sector_3 ?? null,
-        },
-        channels: {
-          distance: grid.map((g) => Math.round(g * 10) / 10),
-          speed: speed.map((v) => Math.round(v * 10) / 10),
-          rpm: rpm.map((v) => Math.round(v)),
-          throttle: throttle.map((v) => Math.round(v * 10) / 10),
-          brake: brake.map((v) => Math.round(v)),
-          gear: gear.map((v) => Math.round(v)),
-          drs: drs.map((v) => Math.round(v)),
-          time: timeChan.map((v) => Math.round(v * 1000) / 1000),
-        },
-        track,
-      };
+    const t0 = Date.parse(chosen.date_start!);
+    const t1 = t0 + chosen.lap_duration! * 1000;
+    // La clave "date>" serializa como `date%3E=valor` → la API lo lee `date>=valor`
+    const dateParams = {
+      session_key: ses.session_key,
+      driver_number: d.driver_number,
+      "date>": new Date(t0).toISOString().replace("Z", ""),
+      "date<": new Date(t1).toISOString().replace("Z", ""),
     };
 
-    // Cada piloto en paralelo; uno que falle no tumba a los demás
-    const settled = await Promise.all(
-      drivers.map((a) =>
-        buildDriver(a).then(
-          (value) => ({ ok: true as const, value }),
-          (error: unknown) => ({ ok: false as const, error: error as Error }),
-        ),
-      ),
+    // car_data y location salen a la vez (el limitador decide el ritmo)
+    const [car, loc] = await Promise.all([
+      of1<Of1CarData[]>("car_data", dateParams),
+      of1<Of1Location[]>("location", dateParams).catch(() => [] as Of1Location[]),
+    ]);
+    if (car.length < 2) throw new Error(`Sin telemetría para ${acronym} (OpenF1)`);
+    car.sort((a, b) => a.date.localeCompare(b.date));
+
+    const times = car.map((c) => (Date.parse(c.date) - t0) / 1000);
+    const dist = integrateDistance(
+      times,
+      car.map((c) => c.speed),
     );
-    const out = settled.flatMap((r) => (r.ok ? [r.value] : []));
-    if (out.length === 0) {
-      const firstErr = settled.find((r) => !r.ok) as { error: Error } | undefined;
-      throw new Error(firstErr?.error.message ?? "Sin telemetría disponible para los pilotos seleccionados");
+
+    const maxDist = dist[dist.length - 1];
+    const grid: number[] = [];
+    for (let g = 0; g < maxDist; g += STEP_METERS) grid.push(g);
+
+    const speed = interp(
+      grid,
+      dist,
+      car.map((c) => c.speed),
+    );
+    const rpm = interp(
+      grid,
+      dist,
+      car.map((c) => c.rpm),
+    );
+    const throttle = interp(
+      grid,
+      dist,
+      car.map((c) => Math.min(c.throttle, 100)),
+    );
+    // OpenF1 da freno 0-100; el chart espera 0/1 como FastF1
+    const brake = interp(
+      grid,
+      dist,
+      car.map((c) => (c.brake > 50 ? 1 : 0)),
+    );
+    const gear = interp(
+      grid,
+      dist,
+      car.map((c) => c.n_gear),
+    );
+    const drs = interp(
+      grid,
+      dist,
+      car.map((c) => (c.drs != null && [10, 12, 14].includes(c.drs) ? 1 : 0)),
+    );
+    const timeChan = interp(grid, dist, times);
+
+    // Posición en pista (puede no existir en sesiones muy recientes)
+    let track: { x: number[]; y: number[] } | null = null;
+    if (loc.length >= 2) {
+      loc.sort((a, b) => a.date.localeCompare(b.date));
+      const locTimes = loc.map((p) => (Date.parse(p.date) - t0) / 1000);
+      const locDist = interp(locTimes, times, dist);
+      track = {
+        x: interp(
+          grid,
+          locDist,
+          loc.map((p) => p.x),
+        ).map(round1),
+        y: interp(
+          grid,
+          locDist,
+          loc.map((p) => p.y),
+        ).map(round1),
+      };
     }
-    return out;
+
+    const stint = stintFinder(stints)(d.driver_number, chosen.lap_number);
+
+    return {
+      driver: acronym,
+      lap_number: chosen.lap_number,
+      lap_time: chosen.lap_duration,
+      compound: stint?.compound ?? null,
+      sectors: {
+        s1: chosen.duration_sector_1 ?? null,
+        s2: chosen.duration_sector_2 ?? null,
+        s3: chosen.duration_sector_3 ?? null,
+      },
+      channels: {
+        distance: grid.map(round1),
+        speed: speed.map(round1),
+        rpm: rpm.map(Math.round),
+        throttle: throttle.map(round1),
+        brake: brake.map(Math.round),
+        gear: gear.map(Math.round),
+        drs: drs.map(Math.round),
+        time: timeChan.map(round3),
+      },
+      track,
+    };
   },
 
   async positions(year: number, gp: string): Promise<RacePositions[]> {
     const ses = await resolveSession(year, gp, "R");
-    const [{ byNumber }, allLaps] = await Promise.all([
-      acronymMaps(ses.session_key),
-      getAllLaps(ses.session_key),
-    ]);
-    const ends = lapEndTimes(allLaps);
-    const maxLap = Math.max(0, ...allLaps.map((l) => l.lap_number));
-
-    const out: RacePositions[] = [];
-    for (let lapN = 1; lapN <= maxLap; lapN++) {
-      const finishers: { num: number; t: number }[] = [];
-      for (const [num, lapEnds] of ends) {
-        const t = lapEnds.get(lapN);
-        if (t != null) finishers.push({ num, t });
-      }
-      if (!finishers.length) continue;
-      finishers.sort((a, b) => a.t - b.t);
-      const positions: Record<string, number> = {};
-      finishers.forEach((f, i) => {
-        const acr = byNumber.get(f.num)?.name_acronym;
-        if (acr) positions[acr] = i + 1;
-      });
-      out.push({ lap: lapN, positions });
-    }
-    return out;
+    return (await getRaceProgress(ses.session_key)).positions;
   },
 
   async gaps(year: number, gp: string): Promise<RaceGaps[]> {
     const ses = await resolveSession(year, gp, "R");
-    const [{ byNumber }, allLaps] = await Promise.all([
-      acronymMaps(ses.session_key),
-      getAllLaps(ses.session_key),
-    ]);
-    const ends = lapEndTimes(allLaps);
-    const maxLap = Math.max(0, ...allLaps.map((l) => l.lap_number));
-
-    const out: RaceGaps[] = [];
-    for (let lapN = 1; lapN <= maxLap; lapN++) {
-      const times: { num: number; t: number }[] = [];
-      for (const [num, lapEnds] of ends) {
-        const t = lapEnds.get(lapN);
-        if (t != null) times.push({ num, t });
-      }
-      if (!times.length) continue;
-      const leader = Math.min(...times.map((x) => x.t));
-      const gaps: Record<string, number> = {};
-      for (const { num, t } of times) {
-        const acr = byNumber.get(num)?.name_acronym;
-        if (acr) gaps[acr] = Math.round((t - leader) / 1000 * 1000) / 1000;
-      }
-      out.push({ lap: lapN, gaps });
-    }
-    return out;
+    return (await getRaceProgress(ses.session_key)).gaps;
   },
 
   async raceEvents(year: number, gp: string): Promise<TrackEvent[]> {
     const ses = await resolveSession(year, gp, "R");
     const rc = await of1<Of1RaceControl[]>("race_control", { session_key: ses.session_key });
-    rc.sort((a, b) => a.date.localeCompare(b.date));
-
-    const events = new Map<number, Set<string>>();
-    const mark = (lap: number | null, label: string) => {
-      if (lap == null) return;
-      const set = events.get(lap) ?? new Set<string>();
-      set.add(label);
-      events.set(lap, set);
-    };
-    const markRange = (from: number | null, to: number | null, label: string) => {
-      if (from == null) return;
-      for (let l = from; l <= (to ?? from); l++) mark(l, label);
-    };
-
-    let scStart: number | null = null;
-    let vscStart: number | null = null;
-    for (const r of rc) {
-      const msg = (r.message ?? "").toUpperCase();
-      if (msg.includes("VIRTUAL SAFETY CAR DEPLOYED")) {
-        vscStart = r.lap_number;
-      } else if (msg.includes("VIRTUAL SAFETY CAR ENDING")) {
-        markRange(vscStart, r.lap_number, "VSC");
-        vscStart = null;
-      } else if (msg.includes("SAFETY CAR DEPLOYED")) {
-        scStart = r.lap_number;
-      } else if (msg.includes("SAFETY CAR IN THIS LAP")) {
-        markRange(scStart, r.lap_number, "SC");
-        scStart = null;
-      } else if (r.flag === "RED") {
-        mark(r.lap_number, "RED");
-      }
-    }
-    // Periodos sin cierre registrado
-    if (scStart != null) mark(scStart, "SC");
-    if (vscStart != null) mark(vscStart, "VSC");
-
-    return [...events.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([lap, evs]) => ({ lap, events: [...evs].sort() }));
+    return parseRaceControl(rc);
   },
 
   async results(year: number, gp: string): Promise<RaceResult[]> {
@@ -779,7 +691,7 @@ export const openf1Api = {
         team: d?.team_name ?? "",
         team_color: d?.team_colour ? `#${d.team_colour}` : null,
         points: typeof r.points === "number" ? r.points : 0,
-        status: r.dsq ? "Disqualified" : r.dns ? "Did not start" : r.dnf ? "Retired" : "Finished",
+        status: resultStatus(r),
         grid_position: gridOf.get(r.driver_number) ?? null,
       };
     });
@@ -793,16 +705,18 @@ export const openf1Api = {
       getAllLaps(ses.session_key),
     ]);
 
+    // Vueltas válidas indexadas por piloto → la media de cada stint no recorre toda la carrera
+    const lapsByDriver = groupBy(
+      allLaps.filter((l) => l.lap_duration != null),
+      (l) => l.driver_number,
+    );
+
     const out: Stint[] = [];
     for (const s of stints) {
       const acr = byNumber.get(s.driver_number)?.name_acronym;
       if (!acr) continue;
-      const stintLaps = allLaps.filter(
-        (l) =>
-          l.driver_number === s.driver_number &&
-          l.lap_number >= s.lap_start &&
-          l.lap_number <= s.lap_end &&
-          l.lap_duration != null,
+      const stintLaps = (lapsByDriver.get(s.driver_number) ?? []).filter(
+        (l) => l.lap_number >= s.lap_start && l.lap_number <= s.lap_end,
       );
       const avg = stintLaps.length
         ? stintLaps.reduce((acc, l) => acc + l.lap_duration!, 0) / stintLaps.length
@@ -816,16 +730,53 @@ export const openf1Api = {
         lap_end: s.lap_end,
         tyre_life_start: age + 1,
         tyre_life_end: age + (s.lap_end - s.lap_start) + 1,
-        avg_lap_time: avg != null ? Math.round(avg * 1000) / 1000 : null,
+        avg_lap_time: avg != null ? round3(avg) : null,
       });
     }
     out.sort((a, b) => a.driver.localeCompare(b.driver) || a.stint_number - b.stint_number);
     return out;
   },
 
-  async circuit(): Promise<CircuitInfo> {
-    // OpenF1 no expone corners; el mapa se dibuja desde la telemetría igualmente
-    return { corners: [], rotation: 0 };
+  /**
+   * Trazado oficial (MultiViewer, mismo origen que la retransmisión): curvas
+   * numeradas, rotación de TV, silueta completa y paneles de comisarios.
+   * Mismas coordenadas que /location de OpenF1. Si no está disponible se
+   * devuelve vacío y el mapa se dibuja igualmente desde la telemetría.
+   */
+  async circuit(year: number, gp: string): Promise<CircuitInfo> {
+    const empty: CircuitInfo = { corners: [], rotation: 0, outline: null, marshalSectors: [] };
+    const { meetings } = await loadYear(year);
+    const meeting = meetings.find((m) => m.meeting_name === gp);
+    if (!meeting?.circuit_key) return empty;
+
+    // El año en curso puede no estar publicado aún: prueba también el anterior
+    for (const y of [year, year - 1]) {
+      try {
+        const res = await fetch(`${MULTIVIEWER}/circuits/${meeting.circuit_key}/${y}`);
+        if (!res.ok) continue;
+        const data = (await res.json()) as MvCircuit;
+        return {
+          rotation: Number(data.rotation) || 0,
+          outline: data.x?.length ? { x: data.x, y: data.y } : null,
+          corners: (data.corners ?? []).map((c) => ({
+            number: c.number,
+            letter: c.letter ?? "",
+            x: c.trackPosition.x,
+            y: c.trackPosition.y,
+            angle: c.angle,
+            distance: null,
+          })),
+          marshalSectors: (data.marshalSectors ?? []).map((m) => ({
+            number: m.number,
+            x: m.trackPosition.x,
+            y: m.trackPosition.y,
+          })),
+        };
+      } catch {
+        /* red / CORS: prueba el siguiente año o cae al vacío */
+      }
+    }
+    return empty;
   },
 
   async sessionResults(year: number, gp: string, session: string): Promise<SessionResults> {
@@ -853,11 +804,7 @@ export const openf1Api = {
       const out: SessionResultRow[] = rows.map((r) => {
         let time: string | null = null;
         if (r.position === 1 && typeof r.duration === "number") {
-          const h = Math.floor(r.duration / 3600);
-          const m = Math.floor((r.duration % 3600) / 60);
-          const s = r.duration % 60;
-          const ss = s.toFixed(3).padStart(6, "0");
-          time = h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+          time = formatRaceDuration(r.duration);
         } else if (typeof r.gap_to_leader === "number") {
           time = `+${r.gap_to_leader.toFixed(3)}`;
         } else if (typeof r.gap_to_leader === "string") {
@@ -868,13 +815,7 @@ export const openf1Api = {
           position: r.position ?? null,
           grid: gridOf.get(r.driver_number) ?? null,
           points: typeof r.points === "number" ? r.points : 0,
-          status: r.dsq
-            ? "Disqualified"
-            : r.dns
-              ? "Did not start"
-              : r.dnf
-                ? "Retired"
-                : "Finished",
+          status: resultStatus(r),
           time,
         };
       });
@@ -899,13 +840,7 @@ export const openf1Api = {
     }
 
     // Libres: mejor vuelta de cada piloto a partir de los laps
-    const allLaps = await getAllLaps(ses.session_key);
-    const byDriver = new Map<number, Of1Lap[]>();
-    for (const l of allLaps) {
-      const list = byDriver.get(l.driver_number) ?? [];
-      list.push(l);
-      byDriver.set(l.driver_number, list);
-    }
+    const byDriver = groupBy(await getAllLaps(ses.session_key), (l) => l.driver_number);
     const bests: { num: number; best: number; laps: number }[] = [];
     for (const [num, list] of byDriver) {
       const valid = list.filter((l) => l.lap_duration != null);
@@ -921,8 +856,8 @@ export const openf1Api = {
     const out: SessionResultRow[] = bests.map((b, i) => ({
       ...base(b.num),
       position: i + 1,
-      best_lap: Math.round(b.best * 1000) / 1000,
-      gap: i ? Math.round((b.best - fastest) * 1000) / 1000 : null,
+      best_lap: round3(b.best),
+      gap: i ? round3(b.best - fastest) : null,
       laps: b.laps,
     }));
     return { kind: "practice", rows: out };

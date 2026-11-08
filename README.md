@@ -16,7 +16,7 @@ Compara hasta 5 pilotos vuelta a vuelta sobre un mapa interactivo del circuito, 
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 
 [![Recharts](https://img.shields.io/badge/Recharts-3-FF6384?style=flat-square)](https://recharts.org)
-[![GSAP](https://img.shields.io/badge/GSAP-3-88CE02?style=flat-square&logo=greensock&logoColor=black)](https://gsap.com)
+[![Framer Motion](https://img.shields.io/badge/Framer_Motion-12-0055FF?style=flat-square&logo=framer&logoColor=white)](https://motion.dev)
 [![TanStack Query](https://img.shields.io/badge/TanStack_Query-5-FF4154?style=flat-square&logo=reactquery&logoColor=white)](https://tanstack.com/query)
 [![Zustand](https://img.shields.io/badge/Zustand-5-443e38?style=flat-square)](https://zustand-demo.pmnd.rs)
 [![Sin servidor](https://img.shields.io/badge/Backend-0%20servidores-e10600?style=flat-square)](#arquitectura)
@@ -128,21 +128,25 @@ flowchart LR
     subgraph Navegador["Navegador (100% cliente)"]
         UI["React 19 · Next 16<br/>vistas y gráficas"]
         RQ["TanStack Query<br/>cache + persistencia"]
-        Q["Cola de peticiones<br/>serializada + reintentos 429"]
+        Q["Limitador de peticiones<br/>3 en paralelo + reintentos 429"]
         D["Datos derivados<br/>gaps · posiciones · índices"]
         UI --> RQ --> Q
         Q --> D --> UI
     end
     Q -->|telemetría · vueltas · posiciones · stints| OF1["OpenF1<br/>api.openf1.org"]
     Q -->|mundiales pilotos/constructores| JOL["Jolpica<br/>api.jolpi.ca"]
+    UI -->|curvas · rotación · silueta| MV["MultiViewer<br/>api.multiviewer.app"]
 ```
 
 Detalles que hacen que esto funcione sin backend:
 
-- **Cola de peticiones** serializada con reintentos y *jitter* ante el `429` de OpenF1 (`lib/openf1.ts`), respetando su rate limit.
-- **Carga en paralelo y tolerante a fallos**: la telemetría se pide por piloto concurrentemente; si uno no tiene datos, el resto sigue.
-- **Datos derivados en el cliente**: los gaps y las posiciones por vuelta no existen en la API — se calculan cruzando los tiempos de vuelta de los 20 pilotos.
-- **Persistencia selectiva**: calendario y mundiales se cachean en local para no volver a pedirlos.
+- **Limitador de peticiones** (`lib/openf1.ts`): hasta 3 en paralelo con intervalo mínimo entre arranques; un `429` pausa toda la cola con backoff y *jitter*.
+- **Una query por piloto**: añadir un piloto a la comparación solo descarga su telemetría; las vueltas se piden una vez por sesión y se filtran en cliente.
+- **Datos derivados en el cliente** (`lib/f1math.ts`, con tests): gaps y posiciones por vuelta se calculan en una sola pasada cruzando los tiempos de los 20 pilotos.
+- **Cursor de telemetría fuera de React**: la reproducción y el hover mueven un store propio; solo se repintan el cursor, el mapa y las lecturas, nunca las gráficas.
+- **Estado en la URL**: cualquier análisis (GP, sesión, pilotos, vuelta, pestaña) es un enlace compartible y funciona con atrás/adelante.
+- **Persistencia selectiva**: calendario, mundiales, pilotos de sesión y trazados se cachean en local; volver a la web arranca sin esperar a OpenF1.
+- **Code splitting por vista**: recharts y cada pestaña se descargan al abrirla.
 
 ---
 
@@ -154,12 +158,16 @@ Detalles que hacen que esto funcione sin backend:
 | Lenguaje | **TypeScript 5** |
 | Estilos | **Tailwind CSS v4** |
 | Gráficas | **Recharts 3** |
-| Animación | **GSAP 3** · **Framer Motion 12** |
+| Animación | **Framer Motion 12** (springs) · CSS |
 | Estado servidor | **TanStack Query 5** (cache + persistencia local) |
 | Estado UI | **Zustand 5** |
 | Iconos | **lucide-react** |
 
-> Tooling de calidad: **ESLint 9** + **Prettier 3** con scripts `lint` / `format` / `type-check` (0 errores).
+> Tooling de calidad: **ESLint 9** + **Prettier 3** + **Vitest** con scripts `lint` / `format` / `type-check` / `test` (0 errores, 0 avisos).
+
+### Sistema de diseño "Liquid"
+
+Superficies de cristal, radios amplios y concéntricos y esquinas continuas (`corner-shape: squircle` donde el navegador lo soporta). Los tokens viven en `app/globals.css` y las primitivas en `components/ui/` (`Button`, `SegmentedControl`, `Dropdown`, `Sheet`, `Chip`). La página interna [`/lab`](http://localhost:3000/lab) las muestra todas.
 
 ---
 
@@ -192,6 +200,7 @@ No hace falta ninguna variable de entorno: la app funciona contra las APIs públ
 | `npm run format` | Formatea con Prettier |
 | `npm run format:check` | Comprueba el formato sin escribir |
 | `npm run type-check` | Comprobación de tipos (`tsc --noEmit`) |
+| `npm test` | Tests unitarios (Vitest) |
 
 ---
 
@@ -206,9 +215,11 @@ components/     Vistas y UI
   strategy/     Timeline de stints
   championship/ Mundiales de pilotos y constructores
   calendar/     Calendario, mini-trazados y resultados de sesión
-hooks/          useF1Data (queries), useTimeZone
-lib/            Cliente de datos (openf1.ts), API (api.ts), tipos, utilidades, export PNG/CSV
-store/          Estado de sesión (Zustand)
+  ui/           Primitivas del sistema de diseño (Button, SegmentedControl, Dropdown, Sheet, Chip)
+hooks/          useF1Data (queries), useUrlSync, useTimeZone
+lib/            Cliente de datos (openf1.ts), transformaciones puras (f1math.ts), geometría del mapa (trackGeometry.ts), tipos, export PNG/CSV
+store/          Estado de sesión con URL (sessionStore) y cursor de telemetría (cursorStore)
+docs/           Capturas y planes (PLAN-3D.md)
 public/         Coches, pilotos y logos de equipos
 ```
 
@@ -230,7 +241,6 @@ Más detalles en [DEPLOY.md](DEPLOY.md).
 
 - **Datos desde 2023**: OpenF1 no cubre temporadas anteriores; cualquier comparativa histórica topa ahí.
 - **Telemetría a ~3.7 Hz**: la primera carga de una sesión tarda unos segundos por el rate limit de OpenF1.
-- **Sin números de curva** en el mapa (OpenF1 no expone *corners*; el trazado se dibuja igual desde la telemetría).
 - Sesiones muy recientes pueden no tener datos de posición todavía: el mapa muestra un aviso y el resto de la app sigue funcionando.
 
 ---
@@ -238,6 +248,7 @@ Más detalles en [DEPLOY.md](DEPLOY.md).
 ## Fuentes de datos y créditos
 
 - **[OpenF1](https://openf1.org)** (`api.openf1.org`) — calendario, pilotos, vueltas, telemetría, posiciones, stints y resultados.
+- **[MultiViewer](https://multiviewer.app)** (`api.multiviewer.app`) — curvas numeradas, rotación oficial y silueta de cada circuito.
 - **[Jolpica](https://github.com/jolpica/jolpica-f1)** (`api.jolpi.ca`) — mundiales de pilotos y constructores.
 
 **Tipografía:** la familia **F1 Display** (© Marc Rouault / W+K para Formula 1), servida en local desde `app/fonts/`, distribuida por terceros como *free for personal use*. Válida para este proyecto personal, **no apta para uso comercial**. Fallback: Titillium Web (Google Fonts).

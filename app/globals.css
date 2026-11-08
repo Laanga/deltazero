@@ -1,120 +1,305 @@
 @import "tailwindcss";
 
-/* ── Brand F1: Carbon Black #15151E · F1 Red #E10600 · White ── */
+/* ═══════════════════════════════════════════════════════════════════
+   DeltaZero · Sistema de diseño "Liquid"
+   Superficies de cristal, esquinas continuas y radios concéntricos.
+   Marca F1: Carbon · F1 Red #E10600 · blanco.
+   ═══════════════════════════════════════════════════════════════════ */
+
 @theme {
-  --color-carbon: #15151e;
-  --color-panel: #1d1d26;
-  --color-panel-light: #26262f;
-  --color-edge: #4a4a5a;
+  /* Color */
+  --color-carbon: #0a0a0f;
+  --color-panel: #15151d;
+  --color-panel-light: #1e1e28;
+  --color-edge: rgb(255 255 255 / 0.09);
+  --color-edge-strong: rgb(255 255 255 / 0.16);
   --color-f1red: #e10600;
+  --color-f1red-bright: #ff2a1f;
+  --color-ink: #f5f5f7;
+  --color-ink-2: #a1a1aa;
+  --color-ink-3: #71717a;
+  --color-pb: #b026ff;
+
+  /* Tipografía */
   --font-display: var(--font-f1), var(--font-titillium), system-ui, sans-serif;
   --font-wide: var(--font-f1-wide), var(--font-f1), var(--font-titillium), sans-serif;
+
+  /* Radios: escala amplia y redondeada (las utilidades rounded-* de Tailwind la heredan) */
+  --radius: 10px;
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 26px;
+  --radius-3xl: 30px;
+  --radius-4xl: 36px;
+
+  /* Movimiento */
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-rise: rise 0.55s var(--ease-out-soft) both;
+  --animate-fade: fade 0.4s ease-out both;
 }
 
-/* Variante Wide de F1 Display: para títulos de sección y cifras destacadas */
+:root {
+  color-scheme: dark;
+
+  /* Materiales */
+  --glass-fill: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.025));
+  --glass-fill-strong: rgb(28 28 38 / 0.72);
+  --glass-hairline: rgb(255 255 255 / 0.09);
+  --glass-specular: inset 0 1px 0 rgb(255 255 255 / 0.09), inset 0 0 0 1px rgb(255 255 255 / 0.02);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35), 0 12px 32px -12px rgb(0 0 0 / 0.55);
+  --shadow-float: 0 18px 50px -12px rgb(0 0 0 / 0.7), 0 4px 14px rgb(0 0 0 / 0.35);
+
+  /* Radios de componente (radio exterior − padding = radio interior) */
+  --r-card: 28px;
+  --r-control: 16px;
+  --r-item: 12px;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Red de seguridad: nada puede ensanchar el viewport en móvil (scroll lateral / zoom out) */
+html,
+body {
+  overflow-x: clip;
+}
+
+body {
+  background-color: var(--color-carbon);
+  /* Halo de marca muy tenue arriba: da profundidad a las superficies de cristal */
+  background-image:
+    radial-gradient(1200px 520px at 50% -180px, rgb(225 6 0 / 0.13), transparent 70%),
+    radial-gradient(900px 600px at 100% 0%, rgb(80 80 140 / 0.08), transparent 70%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+}
+
+::selection {
+  background: rgb(225 6 0 / 0.5);
+}
+
+/* Variante Wide de F1 Display: títulos de sección y cifras destacadas */
 .font-wide {
   font-family: var(--font-wide);
   font-style: normal;
   letter-spacing: 0.02em;
 }
 
-body {
-  background-color: var(--color-carbon);
-  color: #ffffff;
-  font-family: var(--font-display);
-}
-
-::selection {
-  background: rgba(225, 6, 0, 0.5);
-}
-
-/* Foco de teclado visible y consistente en elementos interactivos */
-button:focus-visible,
-a:focus-visible,
-select:focus-visible,
-input:focus-visible,
-[role="button"]:focus-visible,
-[tabindex]:focus-visible {
+/* Foco de teclado: anillo que sigue el radio del propio componente */
+:where(
+  button,
+  a,
+  select,
+  input,
+  [role="button"],
+  [role="tab"],
+  [role="option"],
+  [tabindex]
+):focus-visible {
   outline: 2px solid var(--color-f1red);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
+/* Scrollbar fina y redondeada */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+}
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-carbon);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-edge);
-  border-radius: 0;
+  background: rgb(255 255 255 / 0.14);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-f1red);
+  background-color: rgb(255 255 255 / 0.26);
 }
 
-/* Tarjeta F1: esquina superior derecha cortada a 45° (motivo del logo) */
+/* ─── Superficies ─────────────────────────────────────────────────── */
+
+/* Tarjeta: cristal sobre el fondo, sin blur (barato de pintar en scroll) */
 .panel {
   position: relative;
-  background: var(--color-panel);
-  border: 1px solid var(--color-edge);
-  border-radius: 5px;
-  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  background: var(--glass-fill), var(--color-panel);
+  background-blend-mode: normal;
+  border: 1px solid var(--glass-hairline);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-specular), var(--shadow-card);
 }
 
-/* Paneles con contenido desplegable (dropdowns) no pueden recortar overflow */
+/* Compatibilidad: antes cortaba overflow con clip-path; ya no hace falta */
 .panel.no-cut {
-  clip-path: none;
+  overflow: visible;
 }
 
 .panel-glow {
-  transition: border-color 0.25s ease, background-color 0.25s ease;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.4s var(--ease-spring);
 }
-.panel-glow:hover {
-  border-color: var(--color-f1red);
+@media (hover: hover) {
+  .panel-glow:hover {
+    border-color: var(--color-edge-strong);
+    box-shadow:
+      var(--glass-specular),
+      0 20px 44px -16px rgb(0 0 0 / 0.75);
+  }
 }
 
-/* Línea de velocidad animada */
-@keyframes speedline {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(500%); }
+/* Material flotante (cabecera, barra de pestañas, menús, sheets, toasts): con blur */
+.glass {
+  background: var(--glass-fill-strong);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: var(--glass-specular), var(--shadow-float);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
 }
-.speedline {
-  animation: speedline 2.8s cubic-bezier(0.6, 0, 0.3, 1) infinite;
+
+/* Relleno de control (inputs, pills inactivas, pistas de slider) */
+.fill-control {
+  background: rgb(255 255 255 / 0.055);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+/* Esquinas continuas (squircle) donde el navegador lo soporta. Con
+   superelipse el mismo radio se ve más recto, así que se amplía. */
+@supports (corner-shape: squircle) {
+  .panel,
+  .glass,
+  .squircle {
+    corner-shape: squircle;
+  }
+  .panel {
+    border-radius: calc(var(--r-card) * 1.6);
+  }
+}
+
+/* Etiqueta de sección (micro-texto en mayúsculas) */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-ink-3);
+}
+
+/* Pulsación tipo iOS */
+.pressable {
+  transition:
+    transform 0.35s var(--ease-spring),
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.25s ease,
+    border-color 0.2s ease,
+    opacity 0.2s ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* ─── Animaciones ─────────────────────────────────────────────────── */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Entrada escalonada: style={{ "--i": index }} */
+.stagger {
+  animation: rise 0.5s var(--ease-out-soft) both;
+  animation-delay: calc(min(var(--i, 0), 24) * 28ms);
+}
+
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  transform-origin: left center;
+  animation: grow-x 0.8s var(--ease-out-soft) both;
+  animation-delay: calc(min(var(--i, 0), 40) * 12ms);
 }
 
 /* Rejilla de telemetría tenue para fondos a pantalla completa */
 .telemetry-grid {
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+    linear-gradient(to right, rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.04) 1px, transparent 1px);
   background-size: 46px 46px;
   -webkit-mask-image: radial-gradient(ellipse 65% 60% at 50% 42%, #000 25%, transparent 78%);
-          mask-image: radial-gradient(ellipse 65% 60% at 50% 42%, #000 25%, transparent 78%);
-}
-
-/* Franjas diagonales de fibra de carbono, muy sutiles */
-.carbon-stripes {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.018) 0px,
-    rgba(255, 255, 255, 0.018) 1px,
-    transparent 1px,
-    transparent 9px
-  );
+  mask-image: radial-gradient(ellipse 65% 60% at 50% 42%, #000 25%, transparent 78%);
 }
 
 /* Skeleton shimmer */
 @keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
 }
 .skeleton {
-  background: linear-gradient(90deg, var(--color-panel) 25%, var(--color-panel-light) 50%, var(--color-panel) 75%);
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.035) 25%,
+    rgb(255 255 255 / 0.075) 50%,
+    rgb(255 255 255 / 0.035) 75%
+  );
   background-size: 800px 100%;
   animation: shimmer 1.4s linear infinite;
-  border-radius: 5px;
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  border-radius: var(--r-card);
+}
+
+/* Recharts: sin contorno de foco en el lienzo al hacer clic */
+.recharts-wrapper,
+.recharts-surface {
+  outline: none;
+}
+
+/* Accesibilidad: sin movimiento si el usuario lo pide */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

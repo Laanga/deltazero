@@ -14,7 +14,7 @@ export function StartLights() {
         return (
           <div
             key={i}
-            className="flex h-10 w-7 flex-col items-center justify-center gap-1.5 rounded-sm border border-edge bg-black/60"
+            className="flex h-11 w-7 flex-col items-center justify-center gap-1.5 rounded-full bg-black/60 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.08)]"
           >
             {[0, 1].map((j) => (
               <motion.span

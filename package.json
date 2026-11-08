@@ -9,14 +9,13 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@gsap/react": "^2.1.2",
     "@tanstack/react-query": "^5.101.0",
     "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.40.0",
-    "gsap": "^3.15.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.7",
     "react": "19.2.4",
@@ -34,6 +33,7 @@
     "eslint-config-next": "^16.2.7",
     "prettier": "^3.8.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
